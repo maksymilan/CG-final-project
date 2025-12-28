@@ -1,0 +1,20 @@
+# 1. 忽略 CMake 构建目录
+build/
+cmake-build-debug/
+cmake-build-release/
+out/
+bin/
+.cache/
+
+# 2. 忽略 IDE 生成的配置文件
+.idea/
+.vscode/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.user
+*.suo
+.DS_Store       
+
+# 3. 忽略 FetchContent 下载的临时文件
+_deps/

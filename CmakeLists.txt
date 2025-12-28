@@ -1,0 +1,93 @@
+cmake_minimum_required(VERSION 3.14)
+
+project(GraphicsAssignment)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(FetchContent)
+
+# --- 1. GLFW ---
+message(STATUS "Fetching GLFW...")
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://gitee.com/mirrors/glfw.git
+    GIT_TAG        3.3.8
+    GIT_PROGRESS   TRUE
+)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(glfw)
+
+# --- 2. GLM ---
+message(STATUS "Fetching GLM...")
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://gitee.com/mirrors/glm.git
+    GIT_TAG        1.0.1  
+    GIT_PROGRESS   TRUE
+)
+FetchContent_MakeAvailable(glm)
+
+# --- 3. ImGui ---
+message(STATUS "Fetching ImGui...")
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://gitee.com/mirrors/imgui.git
+    GIT_TAG        docking
+    GIT_PROGRESS   TRUE
+)
+FetchContent_MakeAvailable(imgui)
+
+# --- 4. 配置 ImGui 源文件 ---
+set(IMGUI_DIR ${imgui_SOURCE_DIR})
+set(IMGUI_SOURCES
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_demo.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+)
+
+# --- 5. 定义项目文件 ---
+set(PROJECT_SOURCES
+    src/main.cpp
+    src/glad.c
+    src/Application.cpp    # <--- 新增
+    src/SceneContext.cpp
+    src/Shader.cpp
+    src/Mesh.cpp
+    src/ModelLoader.cpp
+    src/GeometryUtils.cpp
+    ${IMGUI_SOURCES}
+)
+
+add_executable(App ${PROJECT_SOURCES})
+
+# --- 6. 包含路径 ---
+target_include_directories(App PRIVATE 
+    include
+    ${IMGUI_DIR}
+    ${IMGUI_DIR}/backends
+)
+
+# --- 7. 链接库 ---
+target_link_libraries(App PRIVATE glfw glm::glm)
+
+if(WIN32)
+    target_link_libraries(App PRIVATE opengl32)
+elseif(APPLE)
+    target_link_libraries(App PRIVATE "-framework OpenGL" "-framework Cocoa" "-framework IOKit" "-framework CoreVideo")
+else()
+    target_link_libraries(App PRIVATE GL dl pthread)
+endif()
+
+# --- 8. 自动复制资源文件到构建目录 ---
+add_custom_command(TARGET App POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/assets
+    $<TARGET_FILE_DIR:App>/assets
+)
