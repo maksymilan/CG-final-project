@@ -2,6 +2,8 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <filesystem>
+#include <string>
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -11,8 +13,12 @@
 
 #include "ModelLoader.h"
 #include "GeometryUtils.h"
+#include "GeometryGenerator.h"
+#include "OBJLoader.h"
 #include "Renderer.h"
 #include "Texture.h"
+
+namespace fs = std::filesystem;
 
 Application::Application(const std::string &title, int width, int height)
     : appTitle(title), scrWidth(width), scrHeight(height),
@@ -180,6 +186,215 @@ void Application::DeleteSelectedObject()
     }
 }
 
+// [新增] 更新文件列表
+void Application::UpdateFileList(const std::string& directory) {
+    fileList.clear();
+    dirList.clear();
+    
+    try {
+        // 添加上级目录
+        dirList.push_back("..");
+        
+        // 检查目录是否存在
+        if (!fs::exists(directory) || !fs::is_directory(directory)) {
+            std::cerr << "Error: Directory does not exist or is not a directory: " << directory << std::endl;
+            return;
+        }
+        
+        // 遍历目录，跳过权限被拒绝的文件
+        for (const auto& entry : fs::directory_iterator(directory, fs::directory_options::skip_permission_denied)) {
+            try {
+                if (entry.is_directory()) {
+                    dirList.push_back(entry.path().filename().string());
+                } else if (entry.is_regular_file()) {
+                    std::string filename = entry.path().filename().string();
+                    if (fileFilter.empty() || filename.find(fileFilter) != std::string::npos) {
+                        fileList.push_back(filename);
+                    }
+                }
+            } catch (const std::exception& e) {
+                // 忽略单个文件/目录的访问错误
+                continue;
+            }
+        }
+        
+        // 排序目录和文件
+        std::sort(dirList.begin(), dirList.end());
+        std::sort(fileList.begin(), fileList.end());
+        
+        currentDirectory = directory;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: Failed to read directory: " << directory << ". Reason: " << e.what() << std::endl;
+        // 使用当前目录作为回退
+        currentDirectory = "./";
+    }
+}
+
+// [新增] 渲染文件选择器UI
+void Application::RenderFileDialog() {
+    if (!isFileDialogOpen && !isSaveDialogOpen) return;
+    
+    // 确保selectedFilePath不为空
+    if (!selectedFilePath) {
+        if (isSaveDialogOpen) {
+            isSaveDialogOpen = false;
+        } else {
+            isFileDialogOpen = false;
+        }
+        return;
+    }
+    
+    ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_FirstUseEver);
+    ImGui::Begin(dialogTitle.c_str(), isSaveDialogOpen ? &isSaveDialogOpen : &isFileDialogOpen, ImGuiWindowFlags_NoCollapse);
+    
+    // 目录导航栏
+    ImGui::Text("Current Directory: %s", currentDirectory.c_str());
+    ImGui::Separator();
+    
+    // 目录列表
+    if (ImGui::BeginListBox("##Directories", ImVec2(0, 150))) {
+        for (size_t i = 0; i < dirList.size(); i++) {
+            const auto& dir = dirList[i];
+            ImGui::PushID(static_cast<int>(i)); // 添加唯一ID
+            if (ImGui::Selectable(dir.c_str())) {
+                try {
+                    if (dir == "..") {
+                        // 前往上级目录
+                        fs::path parentPath = fs::path(currentDirectory).parent_path();
+                        UpdateFileList(parentPath.string());
+                    } else {
+                        // 进入子目录
+                        fs::path newPath = fs::path(currentDirectory) / dir;
+                        UpdateFileList(newPath.string());
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Error: " << e.what() << std::endl;
+                }
+            }
+            ImGui::PopID(); // 弹出ID
+        }
+        ImGui::EndListBox();
+    }
+    
+    // 文件列表
+    if (!isDirSelection) {
+        ImGui::Separator();
+        ImGui::Text("Files:");
+        if (ImGui::BeginListBox("##Files", ImVec2(0, 200))) {
+            for (size_t i = 0; i < fileList.size(); i++) {
+                const auto& file = fileList[i];
+                ImGui::PushID(static_cast<int>(i)); // 添加唯一ID
+                if (ImGui::Selectable(file.c_str())) {
+                    try {
+                        // 选择文件
+                        fs::path fullPath = fs::path(currentDirectory) / file;
+                        std::string fullPathStr = fullPath.string();
+                        
+                        // 安全地复制字符串，避免缓冲区溢出
+                        if (fullPathStr.length() < 256) {
+                            strcpy(selectedFilePath, fullPathStr.c_str());
+                        } else {
+                            // 如果路径太长，只复制前255个字符
+                            strncpy(selectedFilePath, fullPathStr.c_str(), 255);
+                            selectedFilePath[255] = '\0';
+                        }
+                        
+                        if (isSaveDialogOpen) {
+                            isSaveDialogOpen = false;
+                        } else {
+                            isFileDialogOpen = false;
+                        }
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error: " << e.what() << std::endl;
+                    }
+                }
+                ImGui::PopID(); // 弹出ID
+            }
+            ImGui::EndListBox();
+        }
+    }
+    
+    // 保存对话框的文件名输入
+    if (isSaveDialogOpen) {
+        ImGui::Separator();
+        static char saveFileName[256] = "";
+        ImGui::Text("File Name:");
+        ImGui::InputText("##SaveFileName", saveFileName, sizeof(saveFileName));
+        
+        if (ImGui::Button("Save", ImVec2(100, 0))) {
+            if (strlen(saveFileName) > 0) {
+                try {
+                    std::string fileName(saveFileName);
+                    
+                    // 自动添加.obj扩展名（如果没有的话）
+                    if (!fileFilter.empty() && fileName.find(fileFilter) == std::string::npos) {
+                        fileName += fileFilter;
+                    }
+                    
+                    fs::path fullPath = fs::path(currentDirectory) / fileName;
+                    std::string fullPathStr = fullPath.string();
+                    
+                    // 安全地复制字符串，避免缓冲区溢出
+                    if (fullPathStr.length() < 256) {
+                        strcpy(selectedFilePath, fullPathStr.c_str());
+                    } else {
+                        // 如果路径太长，只复制前255个字符
+                        strncpy(selectedFilePath, fullPathStr.c_str(), 255);
+                        selectedFilePath[255] = '\0';
+                    }
+                    isSaveDialogOpen = false;
+                } catch (const std::exception& e) {
+                    std::cerr << "Error: " << e.what() << std::endl;
+                }
+            }
+        }
+    }
+    
+    // 取消按钮
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(100, 0))) {
+        if (isSaveDialogOpen) {
+            isSaveDialogOpen = false;
+        } else {
+            isFileDialogOpen = false;
+        }
+    }
+    
+    ImGui::End();
+}
+
+// [新增] 打开文件选择器
+void Application::OpenFileDialog(char* buffer, const std::string& title, const std::string& filter, bool isSave, bool isDir) {
+    // 确保buffer不为空
+    if (!buffer) {
+        std::cerr << "Error: Buffer is null" << std::endl;
+        return;
+    }
+    
+    selectedFilePath = buffer;
+    dialogTitle = title;
+    fileFilter = filter;
+    isDirSelection = isDir;
+    
+    try {
+        // 获取当前路径
+        std::string currentPath = fs::current_path().string();
+        UpdateFileList(currentPath);
+        
+        if (isSave) {
+            isSaveDialogOpen = true;
+        } else {
+            isFileDialogOpen = true;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error: Failed to open file dialog: " << e.what() << std::endl;
+        // 重置状态
+        selectedFilePath = nullptr;
+        isSaveDialogOpen = false;
+        isFileDialogOpen = false;
+    }
+}
+
 void Application::Run()
 {
     if (!InitGLFW())
@@ -291,11 +506,15 @@ void Application::SelectObjectFromMouse(double xpos, double ypos)
         return;
 
     // 1. 生成世界空间射线
-    float x = (2.0f * xpos) / scrWidth - 1.0f;
-    float y = 1.0f - (2.0f * ypos) / scrHeight;
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+    // 确保宽高比有效，避免GLM断言错误
+    float aspectRatio = (height > 0) ? (float)width / (float)height : 1.0f;
+    float x = (2.0f * xpos) / width - 1.0f;
+    float y = 1.0f - (2.0f * ypos) / height;
     glm::vec4 rayClip = glm::vec4(x, y, -1.0f, 1.0f);
-    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)scrWidth / (float)scrHeight, 0.1f, 100.0f);
-    glm::vec4 rayEye = glm::inverse(projection) * rayClip;
+        glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), aspectRatio, 0.1f, 100.0f);
+        glm::vec4 rayEye = glm::inverse(projection) * rayClip;
     rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
     glm::vec3 rayDirWorld = glm::normalize(glm::vec3(glm::inverse(camera->GetViewMatrix()) * rayEye));
     glm::vec3 rayOriginWorld = camera->Position;
@@ -343,14 +562,18 @@ void Application::ProcessDrag(double xpos, double ypos)
         return;
 
     // 计算射线
-    float x = (2.0f * xpos) / scrWidth - 1.0f;
-    float y = 1.0f - (2.0f * ypos) / scrHeight;
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+    float x = (2.0f * xpos) / width - 1.0f;
+    float y = 1.0f - (2.0f * ypos) / height;
     glm::vec4 rayClip = glm::vec4(x, y, -1.0f, 1.0f);
-    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)scrWidth / (float)scrHeight, 0.1f, 100.0f);
-    glm::vec4 rayEye = glm::inverse(projection) * rayClip;
-    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
-    glm::vec3 rayDirWorld = glm::normalize(glm::vec3(glm::inverse(camera->GetViewMatrix()) * rayEye));
-    glm::vec3 rayOriginWorld = camera->Position;
+    // 确保宽高比有效，避免GLM断言错误
+    float aspectRatio = (height > 0) ? (float)width / (float)height : 1.0f;
+        glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), aspectRatio, 0.1f, 100.0f);
+        glm::vec4 rayEye = glm::inverse(projection) * rayClip;
+        rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+        glm::vec3 rayDirWorld = glm::normalize(glm::vec3(glm::inverse(camera->GetViewMatrix()) * rayEye));
+        glm::vec3 rayOriginWorld = camera->Position;
 
     // 构造一个通过物体当前Y坐标的水平面
     glm::vec3 planeNormal(0.0f, 1.0f, 0.0f);
@@ -400,7 +623,9 @@ void Application::RenderScene()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     mainShader->use();
-    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)scrWidth / (float)scrHeight, 0.1f, 100.0f);
+    // 确保宽高比有效，避免GLM断言错误
+    float aspectRatio = (scrHeight > 0) ? (float)scrWidth / (float)scrHeight : 1.0f;
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), aspectRatio, 0.1f, 100.0f);
     glm::mat4 view = camera->GetViewMatrix();
     mainShader->setMat4("projection", projection);
     mainShader->setMat4("view", view);
@@ -456,15 +681,15 @@ void Application::RenderUI()
     ImGui::Separator();
 
     ImGui::BeginChild("HierarchyList", ImVec2(0, 150), true);
-    for (auto obj : scene->objects)
-    {
+    for (size_t i = 0; i < scene->objects.size(); i++) {
+        auto obj = scene->objects[i];
         bool isSelected = (scene->selectedObject == obj);
-        if (ImGui::Selectable(obj->name.c_str(), isSelected))
-        {
+        ImGui::PushID(static_cast<int>(i));
+        if (ImGui::Selectable(obj->name.c_str(), isSelected)) {
             scene->selectedObject = obj;
         }
-        if (isSelected)
-            ImGui::SetItemDefaultFocus();
+        if (isSelected) ImGui::SetItemDefaultFocus();
+        ImGui::PopID();
     }
     ImGui::EndChild();
 
@@ -482,19 +707,39 @@ void Application::RenderUI()
     ImGui::Separator();
 
     // [新增] 添加物体 UI
-    if (ImGui::Button("Cube", ImVec2(60, 0)))
-    {
-        Mesh *mesh = GeometryUtils::CreateCube();
-        SceneObject *newObj = new SceneObject("New Cube", mesh);
+    if (ImGui::Button("Cube", ImVec2(60, 0))) {
+        Mesh* mesh = GeometryGenerator::CreateCube();
+        SceneObject* newObj = new SceneObject("New Cube", mesh);
         newObj->position = glm::vec3(0, 0.5f, 0); // 生成在地面上
         scene->AddObject(newObj);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Sphere", ImVec2(60, 0)))
-    {
-        Mesh *mesh = GeometryUtils::CreateSphere(20, 20);
-        SceneObject *newObj = new SceneObject("New Sphere", mesh);
+    if (ImGui::Button("Sphere", ImVec2(60, 0))) {
+        Mesh* mesh = GeometryGenerator::CreateSphere(20);
+        SceneObject* newObj = new SceneObject("New Sphere", mesh);
         newObj->position = glm::vec3(0, 0.5f, 0);
+        scene->AddObject(newObj);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cylinder", ImVec2(80, 0))) {
+        Mesh* mesh = GeometryGenerator::CreateCylinder(0.5f, 1.0f, 20);
+        SceneObject* newObj = new SceneObject("New Cylinder", mesh);
+        newObj->position = glm::vec3(0, 0.5f, 0);
+        scene->AddObject(newObj);
+    }
+    
+    ImGui::Dummy(ImVec2(0, 5));
+    if (ImGui::Button("Cone", ImVec2(60, 0))) {
+        Mesh* mesh = GeometryGenerator::CreateCone(0.5f, 1.0f, 20);
+        SceneObject* newObj = new SceneObject("New Cone", mesh);
+        newObj->position = glm::vec3(0, 0.5f, 0);
+        scene->AddObject(newObj);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Plane", ImVec2(60, 0))) {
+        Mesh* mesh = GeometryGenerator::CreatePlane(2.0f, 2.0f);
+        SceneObject* newObj = new SceneObject("New Plane", mesh);
+        newObj->position = glm::vec3(0, 0.0f, 0);
         scene->AddObject(newObj);
     }
 
@@ -503,18 +748,92 @@ void Application::RenderUI()
     ImGui::Text("Import Model (.obj)");
     ImGui::InputText("##objPath", objPathBuffer, sizeof(objPathBuffer));
     ImGui::SameLine();
-    if (ImGui::Button("Load"))
-    {
-        // 调用 Part B 接口
-        Mesh *imported = ModelLoader::LoadMesh(objPathBuffer);
-        if (imported)
-        {
-            SceneObject *newObj = new SceneObject("Imported Model", imported);
+    if (ImGui::Button("Browse##obj", ImVec2(60, 0))) {
+        OpenFileDialog(objPathBuffer, "Open OBJ File", ".obj", false, false);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Load##obj", ImVec2(60, 0))) {
+        // 调用新的 OBJLoader 接口
+        Mesh* imported = OBJLoader::Load(objPathBuffer); 
+        if (imported) {
+            SceneObject* newObj = new SceneObject("Imported Model", imported);
             scene->AddObject(newObj);
         }
         else
         {
             std::cout << "Failed to load model from " << objPathBuffer << std::endl;
+        }
+    }
+    
+    // [新增] 加载动画序列 UI
+    ImGui::Dummy(ImVec2(0, 5));
+    ImGui::Text("Import Animation Sequence");
+    ImGui::InputText("##animPath", animPathBuffer, sizeof(animPathBuffer));
+    ImGui::SameLine();
+    if (ImGui::Button("Browse##anim", ImVec2(60, 0))) {
+        OpenFileDialog(animPathBuffer, "Select Animation Directory", ".obj", false, true);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Load Seq##anim", ImVec2(80, 0))) {
+        // 调用新的 LoadSequence 接口
+        std::vector<Mesh*> sequence = OBJLoader::LoadSequence(animPathBuffer); 
+        if (!sequence.empty()) {
+            for (size_t i = 0; i < sequence.size(); i++) {
+                Mesh* mesh = sequence[i];
+                if (mesh) {
+                    std::string name = "Anim Frame " + std::to_string(i);
+                    SceneObject* newObj = new SceneObject(name, mesh);
+                    newObj->position = glm::vec3(0, 0.5f, 0);
+                    // 可以根据需要设置不同位置
+                    // newObj->position = glm::vec3(i * 2.0f, 0.5f, 0);
+                    scene->AddObject(newObj);
+                }
+            }
+        } else {
+            std::cout << "Failed to load animation sequence from " << animPathBuffer << std::endl;
+        }
+    }
+    
+    // [新增] 导出功能 UI
+    ImGui::Dummy(ImVec2(0, 10));
+    ImGui::Text("EXPORT");
+    ImGui::Separator();
+    
+    // 导出单个选中物体
+    if (scene->selectedObject) {
+        ImGui::Text("Export Selected Mesh");
+        static char exportMeshPath[256] = "exports/selected_mesh.obj";
+        ImGui::InputText("##exportMeshPath", exportMeshPath, sizeof(exportMeshPath));
+        ImGui::SameLine();
+        if (ImGui::Button("Browse##exportMesh", ImVec2(60, 0))) {
+            OpenFileDialog(exportMeshPath, "Save Mesh As", ".obj", true, false);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Export Mesh##mesh", ImVec2(100, 0))) {
+            bool success = OBJLoader::ExportMesh(scene->selectedObject->mesh, exportMeshPath);
+            if (success) {
+                std::cout << "Successfully exported mesh to: " << exportMeshPath << std::endl;
+            } else {
+                std::cout << "Failed to export mesh to: " << exportMeshPath << std::endl;
+            }
+        }
+    }
+    
+    // 导出整个场景
+    ImGui::Text("Export Entire Scene");
+    static char exportScenePath[256] = "exports/scene.obj";
+    ImGui::InputText("##exportScenePath", exportScenePath, sizeof(exportScenePath));
+    ImGui::SameLine();
+    if (ImGui::Button("Browse##exportScene", ImVec2(60, 0))) {
+        OpenFileDialog(exportScenePath, "Save Scene As", ".obj", true, false);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Export Scene##scene", ImVec2(100, 0))) {
+        bool success = OBJLoader::ExportScene(scene, exportScenePath);
+        if (success) {
+            std::cout << "Successfully exported scene to: " << exportScenePath << std::endl;
+        } else {
+            std::cout << "Failed to export scene to: " << exportScenePath << std::endl;
         }
     }
 
@@ -601,6 +920,10 @@ void Application::RenderUI()
     }
 
     ImGui::End();
+    
+    // [新增] 渲染文件选择器
+    RenderFileDialog();
+    
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
