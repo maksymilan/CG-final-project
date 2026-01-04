@@ -37,6 +37,18 @@ private:
     // UI 缓存变量 [新增]
     char objPathBuffer[256] = "assets/models/teapot.obj";
     char texturePathBuffer[256] = "assets/textures/wood.png";
+    char animPathBuffer[256] = "assets/animations/";
+    
+    // 文件选择器相关变量 [新增]
+    bool isFileDialogOpen = false;
+    bool isSaveDialogOpen = false;
+    std::string currentDirectory = "./";
+    std::vector<std::string> fileList;
+    std::vector<std::string> dirList;
+    char* selectedFilePath = nullptr;
+    std::string dialogTitle = "";
+    std::string fileFilter = "";
+    bool isDirSelection = false;
 
     // 初始化
     bool InitGLFW();
@@ -60,6 +72,11 @@ private:
                            float& t);
     // [新增] 处理拖拽逻辑
     void ProcessDrag(double xpos, double ypos);
+    
+    // [新增] 文件选择器相关函数
+    void UpdateFileList(const std::string& directory);
+    void RenderFileDialog();
+    void OpenFileDialog(char* buffer, const std::string& title, const std::string& filter, bool isSave = false, bool isDir = false);
 
     // 回调
     static void FramebufferSizeCallback(GLFWwindow* window, int width, int height);

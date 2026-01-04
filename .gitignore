@@ -9,6 +9,7 @@ bin/
 # 2. 忽略 IDE 生成的配置文件
 .idea/
 .vscode/
+.vs/
 *.sln
 *.vcxproj
 *.vcxproj.filters

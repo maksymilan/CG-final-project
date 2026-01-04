@@ -1,93 +1,326 @@
 #include "GeometryUtils.h"
 #include <vector>
+#include <cmath>
 
-// 辅助函数：添加面的两个三角形
-void AddFace(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, 
-             glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d, glm::vec3 normal) {
-    unsigned int startIdx = vertices.size();
-    vertices.push_back({a, normal, glm::vec2(0.0f, 0.0f)});
-    vertices.push_back({b, normal, glm::vec2(1.0f, 0.0f)});
-    vertices.push_back({c, normal, glm::vec2(1.0f, 1.0f)});
-    vertices.push_back({d, normal, glm::vec2(0.0f, 1.0f)});
-    
-    indices.push_back(startIdx);
-    indices.push_back(startIdx + 1);
-    indices.push_back(startIdx + 2);
-    indices.push_back(startIdx + 2);
-    indices.push_back(startIdx + 3);
-    indices.push_back(startIdx);
+const float PI = 3.1415926535f;
+
+// Helper function to calculate normal
+inline glm::vec3 CalculateNormal(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
+{
+    return glm::normalize(glm::cross(b - a, c - a));
 }
 
-Mesh* GeometryUtils::CreateCube() {
+Mesh* GeometryUtils::CreateCube()
+{
     std::vector<Vertex> vertices;
     std::vector<unsigned int> indices;
     std::vector<Texture> textures;
 
-    // 8个角点
-    glm::vec3 p0(-0.5f, -0.5f,  0.5f); glm::vec3 p1( 0.5f, -0.5f,  0.5f);
-    glm::vec3 p2( 0.5f,  0.5f,  0.5f); glm::vec3 p3(-0.5f,  0.5f,  0.5f);
-    glm::vec3 p4(-0.5f, -0.5f, -0.5f); glm::vec3 p5( 0.5f, -0.5f, -0.5f);
-    glm::vec3 p6( 0.5f,  0.5f, -0.5f); glm::vec3 p7(-0.5f,  0.5f, -0.5f);
+    // Cube vertices with correct normals and texture coordinates
+    // Each face has its own set of vertices with correct normals
+    Vertex cubeVertices[] = {
+        // Front face
+        {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec2(0.0f, 0.0f)},
+        {glm::vec3(0.5f, -0.5f, -0.5f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec2(1.0f, 0.0f)},
+        {glm::vec3(0.5f, 0.5f, -0.5f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec2(1.0f, 1.0f)},
+        {glm::vec3(-0.5f, 0.5f, -0.5f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec2(0.0f, 1.0f)},
+        
+        // Back face
+        {glm::vec3(-0.5f, -0.5f, 0.5f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(0.0f, 0.0f)},
+        {glm::vec3(0.5f, -0.5f, 0.5f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(1.0f, 0.0f)},
+        {glm::vec3(0.5f, 0.5f, 0.5f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(1.0f, 1.0f)},
+        {glm::vec3(-0.5f, 0.5f, 0.5f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(0.0f, 1.0f)},
+        
+        // Bottom face
+        {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.0f, 0.0f)},
+        {glm::vec3(0.5f, -0.5f, -0.5f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(1.0f, 0.0f)},
+        {glm::vec3(0.5f, -0.5f, 0.5f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(1.0f, 1.0f)},
+        {glm::vec3(-0.5f, -0.5f, 0.5f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.0f, 1.0f)},
+        
+        // Top face
+        {glm::vec3(-0.5f, 0.5f, -0.5f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.0f, 0.0f)},
+        {glm::vec3(0.5f, 0.5f, -0.5f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(1.0f, 0.0f)},
+        {glm::vec3(0.5f, 0.5f, 0.5f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(1.0f, 1.0f)},
+        {glm::vec3(-0.5f, 0.5f, 0.5f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.0f, 1.0f)},
+        
+        // Left face
+        {glm::vec3(-0.5f, -0.5f, -0.5f), glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec2(0.0f, 0.0f)},
+        {glm::vec3(-0.5f, 0.5f, -0.5f), glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec2(1.0f, 0.0f)},
+        {glm::vec3(-0.5f, 0.5f, 0.5f), glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec2(1.0f, 1.0f)},
+        {glm::vec3(-0.5f, -0.5f, 0.5f), glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec2(0.0f, 1.0f)},
+        
+        // Right face
+        {glm::vec3(0.5f, -0.5f, -0.5f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.0f, 0.0f)},
+        {glm::vec3(0.5f, 0.5f, -0.5f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(1.0f, 0.0f)},
+        {glm::vec3(0.5f, 0.5f, 0.5f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(1.0f, 1.0f)},
+        {glm::vec3(0.5f, -0.5f, 0.5f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.0f, 1.0f)}
+    };
 
-    // 前面
-    AddFace(vertices, indices, p0, p1, p2, p3, glm::vec3(0, 0, 1));
-    // 后面
-    AddFace(vertices, indices, p5, p4, p7, p6, glm::vec3(0, 0, -1));
-    // 左面
-    AddFace(vertices, indices, p4, p0, p3, p7, glm::vec3(-1, 0, 0));
-    // 右面
-    AddFace(vertices, indices, p1, p5, p6, p2, glm::vec3(1, 0, 0));
-    // 上面
-    AddFace(vertices, indices, p3, p2, p6, p7, glm::vec3(0, 1, 0));
-    // 下面
-    AddFace(vertices, indices, p4, p5, p1, p0, glm::vec3(0, -1, 0));
+    // Cube face indices (right-hand rule for outward normals)
+    unsigned int cubeIndices[] = {
+        0, 3, 2, 2, 1, 0, // Front face
+        4, 5, 6, 6, 7, 4, // Back face
+        8, 9, 10, 10, 11, 8, // Bottom face
+        12, 15, 14, 14, 13, 12, // Top face
+        16, 17, 18, 18, 19, 16, // Left face
+        20, 23, 22, 22, 21, 20  // Right face
+    };
+
+    // Add vertices
+    for (int i = 0; i < 24; i++) {
+        vertices.push_back(cubeVertices[i]);
+    }
+
+    // Add indices
+    for (int i = 0; i < 36; i++) {
+        indices.push_back(cubeIndices[i]);
+    }
 
     return new Mesh(vertices, indices, textures);
 }
 
-Mesh* GeometryUtils::CreateSphere(int latitudeSegments, int longitudeSegments) {
-    // [Part C Stub] 暂时用一个不同颜色的金字塔代替球体，证明是不同的形状
+Mesh* GeometryUtils::CreateSphere(int latitudeSegments, int longitudeSegments)
+{
     std::vector<Vertex> vertices;
     std::vector<unsigned int> indices;
     std::vector<Texture> textures;
 
-    // 金字塔顶点
-    glm::vec3 top(0.0f, 0.5f, 0.0f);
-    glm::vec3 base0(-0.5f, -0.5f, 0.5f);
-    glm::vec3 base1( 0.5f, -0.5f, 0.5f);
-    glm::vec3 base2( 0.5f, -0.5f, -0.5f);
-    glm::vec3 base3(-0.5f, -0.5f, -0.5f);
+    // Generate vertices
+    for (int lat = 0; lat <= latitudeSegments; lat++) {
+        float theta = lat * PI / latitudeSegments;
+        float sinTheta = sin(theta);
+        float cosTheta = cos(theta);
 
-    // 侧面法线暂略，统一向上
-    glm::vec3 normal(0.0f, 1.0f, 0.0f);
+        for (int lon = 0; lon <= longitudeSegments; lon++) {
+            float phi = lon * 2 * PI / longitudeSegments;
+            float sinPhi = sin(phi);
+            float cosPhi = cos(phi);
 
-    // 底面
-    vertices.push_back({base0, glm::vec3(0,-1,0), {0,0}});
-    vertices.push_back({base1, glm::vec3(0,-1,0), {1,0}});
-    vertices.push_back({base2, glm::vec3(0,-1,0), {1,1}});
-    vertices.push_back({base3, glm::vec3(0,-1,0), {0,1}});
-    indices.push_back(0); indices.push_back(1); indices.push_back(2);
-    indices.push_back(2); indices.push_back(3); indices.push_back(0);
+            // Calculate vertex position
+            glm::vec3 position;
+            position.x = cosPhi * sinTheta;
+            position.y = cosTheta;
+            position.z = sinPhi * sinTheta;
 
-    // 侧面 (简单处理，不共用顶点以保证法线垂直)
-    unsigned int start = 4;
-    Vertex vTop = {top, normal, {0.5, 1}};
+            // Normal is the same as vertex position (since center is at origin)
+            // Ensure normal is pointing outward by normalizing
+            glm::vec3 normal = glm::normalize(position);
+
+            // Texture coordinates
+            glm::vec2 texCoord;
+            texCoord.x = (float)lon / (float)longitudeSegments;
+            texCoord.y = (float)lat / (float)latitudeSegments;
+
+            vertices.push_back({position, normal, texCoord});
+        }
+    }
+
+    // Generate indices
+    for (int lat = 0; lat < latitudeSegments; lat++) {
+        for (int lon = 0; lon < longitudeSegments; lon++) {
+            unsigned int first = lat * (longitudeSegments + 1) + lon;
+            unsigned int second = first + longitudeSegments + 1;
+
+            // First triangle (ensure correct winding order for outward normals)
+            indices.push_back(first);
+            indices.push_back(first + 1);
+            indices.push_back(second);
+
+            // Second triangle (ensure correct winding order for outward normals)
+            indices.push_back(first + 1);
+            indices.push_back(second + 1);
+            indices.push_back(second);
+        }
+    }
+
+    return new Mesh(vertices, indices, textures);
+}
+
+Mesh* GeometryUtils::CreateCylinder(float radius, float height, int segments)
+{
+    std::vector<Vertex> vertices;
+    std::vector<unsigned int> indices;
+    std::vector<Texture> textures;
+
+    float halfHeight = height / 2.0f;
+    int vertexCount = 0;
+
+    // --- Generate side vertices (with correct side normals) --- 
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
+
+        // Bottom vertex (side) - uses side normal
+        glm::vec3 bottomPos(radius * cosAngle, -halfHeight, radius * sinAngle);
+        glm::vec3 sideNormal = glm::normalize(glm::vec3(cosAngle, 0.0f, sinAngle)); // Outward normal for side
+        vertices.push_back({bottomPos, sideNormal, glm::vec2((float)i / segments, 0.0f)});
+
+        // Top vertex (side) - uses side normal
+        glm::vec3 topPos(radius * cosAngle, halfHeight, radius * sinAngle);
+        vertices.push_back({topPos, sideNormal, glm::vec2((float)i / segments, 1.0f)});
+    }
+
+    // --- Generate bottom face vertices (with correct bottom normals) --- 
+    // Bottom center
+    int bottomCenterIdx = vertices.size();
+    vertices.push_back({glm::vec3(0.0f, -halfHeight, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.5f, 0.5f)});
     
-    // 面1
-    vertices.push_back(vTop); vertices.push_back({base0, normal, {0,0}}); vertices.push_back({base1, normal, {1,0}});
-    indices.push_back(start); indices.push_back(start+1); indices.push_back(start+2); start+=3;
+    // Bottom edge vertices (with bottom normal)
+    int bottomEdgeStartIdx = vertices.size();
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
+        
+        glm::vec3 pos(radius * cosAngle, -halfHeight, radius * sinAngle);
+        vertices.push_back({pos, glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.5f + 0.5f * cosAngle, 0.5f + 0.5f * sinAngle)});
+    }
+
+    // --- Generate top face vertices (with correct top normals) --- 
+    // Top center
+    int topCenterIdx = vertices.size();
+    vertices.push_back({glm::vec3(0.0f, halfHeight, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.5f, 0.5f)});
     
-    // 面2
-    vertices.push_back(vTop); vertices.push_back({base1, normal, {0,0}}); vertices.push_back({base2, normal, {1,0}});
-    indices.push_back(start); indices.push_back(start+1); indices.push_back(start+2); start+=3;
+    // Top edge vertices (with top normal)
+    int topEdgeStartIdx = vertices.size();
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
+        
+        glm::vec3 pos(radius * cosAngle, halfHeight, radius * sinAngle);
+        vertices.push_back({pos, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.5f + 0.5f * cosAngle, 0.5f + 0.5f * sinAngle)});
+    }
 
-    // 面3
-    vertices.push_back(vTop); vertices.push_back({base2, normal, {0,0}}); vertices.push_back({base3, normal, {1,0}});
-    indices.push_back(start); indices.push_back(start+1); indices.push_back(start+2); start+=3;
+    // --- Generate side indices --- 
+    for (int i = 0; i < segments; i++) {
+        int current = i * 2;
+        int next = (i + 1) * 2;
 
-    // 面4
-    vertices.push_back(vTop); vertices.push_back({base3, normal, {0,0}}); vertices.push_back({base0, normal, {1,0}});
-    indices.push_back(start); indices.push_back(start+1); indices.push_back(start+2);
+        // First triangle (bottom to top to next top, counter-clockwise)
+        indices.push_back(current);
+        indices.push_back(current + 1);
+        indices.push_back(next + 1);
+
+        // Second triangle (bottom to next top to next bottom, counter-clockwise)
+        indices.push_back(current);
+        indices.push_back(next + 1);
+        indices.push_back(next);
+    }
+
+    // --- Generate bottom face indices --- 
+    for (int i = 0; i < segments; i++) {
+        indices.push_back(bottomCenterIdx);
+        indices.push_back(bottomEdgeStartIdx + i + 1);
+        indices.push_back(bottomEdgeStartIdx + i);
+    }
+
+    // --- Generate top face indices --- 
+    for (int i = 0; i < segments; i++) {
+        indices.push_back(topCenterIdx);
+        indices.push_back(topEdgeStartIdx + i);
+        indices.push_back(topEdgeStartIdx + i + 1);
+    }
+
+    return new Mesh(vertices, indices, textures);
+}
+
+Mesh* GeometryUtils::CreateCone(float radius, float height, int segments)
+{
+    std::vector<Vertex> vertices;
+    std::vector<unsigned int> indices;
+    std::vector<Texture> textures;
+
+    // Generate vertices
+    // Bottom center
+    vertices.push_back({glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.5f, 0.5f)});
+    
+    // Bottom vertices
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float x = radius * cos(angle);
+        float z = radius * sin(angle);
+        // Bottom vertices have downward normal (-Y)
+        vertices.push_back({glm::vec3(x, 0.0f, z), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.5f + 0.5f * cos(angle), 0.5f + 0.5f * sin(angle))});
+    }
+    
+    // Apex
+    vertices.push_back({glm::vec3(0.0f, height, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.5f, 1.0f)});
+    
+    int apexIdx = vertices.size() - 1;
+    
+    // Generate bottom face indices with correct winding order (counter-clockwise for -Y normal)
+    for (int i = 1; i < segments + 1; i++) {
+        indices.push_back(0);
+        indices.push_back(i);
+        indices.push_back(i + 1);
+    }
+    
+    // Generate side face indices with correct winding order for outward normals
+    for (int i = 1; i < segments + 1; i++) {
+        indices.push_back(apexIdx);
+        indices.push_back(i + 1);
+        indices.push_back(i);
+    }
+
+    // Calculate side face normals (outward pointing)
+    for (int i = 1; i < segments + 2; i++) {
+        // Calculate triangle vertices
+        glm::vec3 v0 = vertices[apexIdx].Position;
+        // 使用与索引顺序一致的顶点顺序：apexIdx -> i+1 -> i
+        glm::vec3 v1 = vertices[(i % segments) + 1].Position;
+        glm::vec3 v2 = vertices[i].Position;
+        
+        // Calculate normal using cross product with correct winding order
+        // Use (v1 - v0) × (v2 - v0) to get outward normal
+        glm::vec3 edge1 = v1 - v0;
+        glm::vec3 edge2 = v2 - v0;
+        glm::vec3 normal = glm::normalize(glm::cross(edge1, edge2));
+        
+        // Update the vertex normal
+        vertices[i].Normal = normal;
+    }
+
+    return new Mesh(vertices, indices, textures);
+}
+
+Mesh* GeometryUtils::CreatePlane(float width, float depth)
+{
+    std::vector<Vertex> vertices;
+    std::vector<unsigned int> indices;
+    std::vector<Texture> textures;
+
+    float halfWidth = width / 2.0f;
+    float halfDepth = depth / 2.0f;
+
+    // Plane vertices with correct normals and texture coordinates
+    Vertex planeVertices[] = {
+        // Bottom-left corner
+        {glm::vec3(-halfWidth, 0.0f, halfDepth), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.0f, 0.0f)},
+        // Bottom-right corner
+        {glm::vec3(halfWidth, 0.0f, halfDepth), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(1.0f, 0.0f)},
+        // Top-right corner
+        {glm::vec3(halfWidth, 0.0f, -halfDepth), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(1.0f, 1.0f)},
+        // Top-left corner
+        {glm::vec3(-halfWidth, 0.0f, -halfDepth), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.0f, 1.0f)}
+    };
+
+    // Plane indices (two triangles forming a quad)
+    unsigned int planeIndices[] = {
+        0, 1, 2,  // First triangle
+        0, 2, 3   // Second triangle
+    };
+
+    // Add vertices
+    for (int i = 0; i < 4; i++) {
+        vertices.push_back(planeVertices[i]);
+    }
+
+    // Add indices
+    for (int i = 0; i < 6; i++) {
+        indices.push_back(planeIndices[i]);
+    }
 
     return new Mesh(vertices, indices, textures);
 }

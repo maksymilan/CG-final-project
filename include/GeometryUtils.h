@@ -9,7 +9,9 @@ class GeometryUtils {
 public:
     static Mesh* CreateCube();
     static Mesh* CreateSphere(int latitudeSegments, int longitudeSegments);
-    // [Part C] TODO: 添加圆柱、圆锥等接口
+    static Mesh* CreateCylinder(float radius, float height, int segments);
+    static Mesh* CreateCone(float radius, float height, int segments);
+    static Mesh* CreatePlane(float width, float depth);
 };
 
 #endif
