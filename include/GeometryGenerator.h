@@ -15,6 +15,8 @@ public:
     static Mesh* CreateCylinder(float radius, float height, int segments);
     static Mesh* CreateCone(float radius, float height, int segments);
     static Mesh* CreatePlane(float width, float depth);
+    static Mesh* CreatePrism(float radius, float height, int segments);
+    static Mesh* CreateFrustum(float topRadius, float bottomRadius, float height, int segments);
 };
 
 #endif

@@ -49,6 +49,11 @@ private:
     std::string dialogTitle = "";
     std::string fileFilter = "";
     bool isDirSelection = false;
+    
+    // 屏幕截图相关变量 [新增]
+    char screenshotPathBuffer[256] = "screenshots/screenshot.png";
+    int screenshotFormat = 0; // 0: BMP, 1: PNG
+    bool isScreenshotDialogOpen = false;
 
     // 初始化
     bool InitGLFW();
@@ -77,6 +82,11 @@ private:
     void UpdateFileList(const std::string& directory);
     void RenderFileDialog();
     void OpenFileDialog(char* buffer, const std::string& title, const std::string& filter, bool isSave = false, bool isDir = false);
+    
+    // [新增] 屏幕截图相关函数
+    void CaptureScreen();
+    bool SaveScreenshot(const std::string& filePath, int format);
+    void RenderScreenshotDialog();
 
     // 回调
     static void FramebufferSizeCallback(GLFWwindow* window, int width, int height);

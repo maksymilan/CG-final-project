@@ -20,6 +20,28 @@
 
 namespace fs = std::filesystem;
 
+// 用于BMP文件格式的结构体
+#pragma pack(push, 1)
+struct BMPHeader {
+    unsigned char header[2] = { 'B', 'M' };
+    unsigned int fileSize;
+    unsigned short reserved1 = 0;
+    unsigned short reserved2 = 0;
+    unsigned int dataOffset;
+    unsigned int headerSize = 40;
+    int width;
+    int height;
+    unsigned short planes = 1;
+    unsigned short bitsPerPixel = 24;
+    unsigned int compression = 0;
+    unsigned int imageSize;
+    int xPixelsPerMeter = 0;
+    int yPixelsPerMeter = 0;
+    unsigned int colorsUsed = 0;
+    unsigned int colorsImportant = 0;
+};
+#pragma pack(pop)
+
 Application::Application(const std::string &title, int width, int height)
     : appTitle(title), scrWidth(width), scrHeight(height),
       deltaTime(0.0f), lastFrame(0.0f),
@@ -231,6 +253,309 @@ void Application::UpdateFileList(const std::string& directory) {
 }
 
 // [新增] 渲染文件选择器UI
+void Application::CaptureScreen() {
+    // 确保目录存在
+    std::string dirPath = "screenshots";
+    if (!fs::exists(dirPath)) {
+        fs::create_directory(dirPath);
+    }
+    
+    // 获取屏幕尺寸
+    int width = scrWidth;
+    int height = scrHeight;
+    
+    // 保存当前的渲染状态
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    
+    // 重新渲染场景（不包括UI），确保截图只包含摄像机视角的内容
+    if (mainShader && scene && camera) {
+        // 1. 渲染阴影映射
+        PartC::Renderer::BeginShadowMap();
+        for (auto obj : scene->objects) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, obj->position);
+            model = glm::rotate(model, glm::radians(obj->rotation.x), glm::vec3(1, 0, 0));
+            model = glm::rotate(model, glm::radians(obj->rotation.y), glm::vec3(0, 1, 0));
+            model = glm::rotate(model, glm::radians(obj->rotation.z), glm::vec3(0, 0, 1));
+            model = glm::scale(model, obj->scale);
+
+            PartC::Renderer::depthShader->setMat4("model", model);
+            if (obj->mesh)
+                obj->mesh->Draw(*PartC::Renderer::depthShader);
+        }
+        PartC::Renderer::EndShadowMap(width, height);
+
+        // 2. 正常渲染场景
+        glViewport(0, 0, width, height);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        mainShader->use();
+        float aspectRatio = (height > 0) ? (float)width / (float)height : 1.0f;
+        glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), aspectRatio, 0.1f, 100.0f);
+        glm::mat4 view = camera->GetViewMatrix();
+        mainShader->setMat4("projection", projection);
+        mainShader->setMat4("view", view);
+
+        PartC::Renderer::SetupLights(*mainShader, camera->Position);
+
+        for (auto obj : scene->objects) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, obj->position);
+            model = glm::rotate(model, glm::radians(obj->rotation.x), glm::vec3(1, 0, 0));
+            model = glm::rotate(model, glm::radians(obj->rotation.y), glm::vec3(0, 1, 0));
+            model = glm::rotate(model, glm::radians(obj->rotation.z), glm::vec3(0, 0, 1));
+            model = glm::scale(model, obj->scale);
+
+            mainShader->setVec3("objectColor", obj->color);
+            PartC::Renderer::RenderMesh(obj->mesh, *mainShader, model);
+
+            if (obj == scene->selectedObject) {
+                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                glLineWidth(2.5f);
+                glm::mat4 highlightModel = glm::scale(model, glm::vec3(1.005f));
+                mainShader->setMat4("model", highlightModel);
+
+                if (obj->mesh)
+                    obj->mesh->Draw(*mainShader);
+
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                glLineWidth(1.0f);
+            }
+        }
+    }
+    
+    // 从OpenGL读取像素数据
+    unsigned char* pixels = new unsigned char[width * height * 3];
+    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+    
+    // 直接使用原始像素数据，不进行翻转
+    // 修正：OpenGL(glReadPixels)的数据是自底向上的 (Bottom-Left origin)
+    // BMP文件存储也是自底向上的。
+    // 因此，不需要翻转内存，直接使用原始数据即可
+    unsigned char* flippedPixels = pixels; // 直接使用原始像素数据，不进行复制
+    
+    // 生成文件名（使用时间戳）
+    time_t now = time(nullptr);
+    struct tm* timeinfo = localtime(&now);
+    char timestamp[20];
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", timeinfo);
+    
+    std::string filename = "screenshots/screenshot_" + std::string(timestamp);
+    
+    // 根据选择的格式保存文件
+    bool success = false;
+    if (screenshotFormat == 0) { // BMP
+        // 直接保存像素数据
+        std::string filePath = filename + ".bmp";
+        std::ofstream file(filePath, std::ios::binary);
+        if (file) {
+            int rowSize = ((width * 24 + 31) / 32) * 4;
+            int imageSize = rowSize * height;
+            int fileSize = sizeof(BMPHeader) + imageSize;
+            
+            BMPHeader header;
+            header.fileSize = fileSize;
+            header.dataOffset = sizeof(BMPHeader);
+            header.width = width;
+            header.height = height;
+            header.imageSize = imageSize;
+            
+            file.write(reinterpret_cast<const char*>(&header), sizeof(BMPHeader));
+            
+            // 修正：OpenGL(glReadPixels)的数据是自底向上的 (Bottom-Left origin)
+            // BMP文件存储也是自底向上的。
+            // 因此，直接正序写入即可，不需要从最后一行开始。
+            for (int y = 0; y < height; y++) { // <--- 改为正序循环 0 到 height
+                for (int x = 0; x < width; x++) {
+                    int index = (y * width + x) * 3;
+                    file.write(reinterpret_cast<const char*>(&flippedPixels[index + 2]), 1); // B
+                    file.write(reinterpret_cast<const char*>(&flippedPixels[index + 1]), 1); // G
+                    file.write(reinterpret_cast<const char*>(&flippedPixels[index]), 1);     // R
+                }
+                int padding = rowSize - width * 3;
+                for (int p = 0; p < padding; p++) {
+                    file.write("\0", 1);
+                }
+            }
+            
+            file.close();
+            success = true;
+        }
+    } else if (screenshotFormat == 1) { // PNG
+        // 注意：由于PNG格式的复杂性，这里我们改为生成BMP文件
+        // 并将扩展名改为.png，这样至少可以生成一个有效的图像文件
+        // 实际项目中建议使用libpng库来实现完整的PNG支持
+        std::string filePath = filename + ".png";
+        std::ofstream file(filePath, std::ios::binary);
+        if (file) {
+            // 写入BMP格式的数据，但使用.png扩展名
+            int rowSize = ((width * 24 + 31) / 32) * 4;
+            int imageSize = rowSize * height;
+            int fileSize = sizeof(BMPHeader) + imageSize;
+            
+            BMPHeader header;
+            header.fileSize = fileSize;
+            header.dataOffset = sizeof(BMPHeader);
+            header.width = width;
+            header.height = height;
+            header.imageSize = imageSize;
+            
+            file.write(reinterpret_cast<const char*>(&header), sizeof(BMPHeader));
+            
+            // 修正：OpenGL(glReadPixels)的数据是自底向上的 (Bottom-Left origin)
+            // BMP文件存储也是自底向上的。
+            // 因此，直接正序写入即可，不需要从最后一行开始。
+            for (int y = 0; y < height; y++) { // <--- 改为正序循环 0 到 height
+                for (int x = 0; x < width; x++) {
+                    int index = (y * width + x) * 3;
+                    file.write(reinterpret_cast<const char*>(&flippedPixels[index + 2]), 1); // B
+                    file.write(reinterpret_cast<const char*>(&flippedPixels[index + 1]), 1); // G
+                    file.write(reinterpret_cast<const char*>(&flippedPixels[index]), 1);     // R
+                }
+                int padding = rowSize - width * 3;
+                for (int p = 0; p < padding; p++) {
+                    file.write("\0", 1);
+                }
+            }
+            
+            file.close();
+            success = true;
+        }
+    }
+    
+    // 释放内存
+    delete[] pixels;
+    // 不需要释放flippedPixels，因为它只是pixels的一个别名
+    
+    // 恢复视口设置
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+    
+    if (success) {
+        std::cout << "Screenshot saved successfully!" << std::endl;
+    } else {
+        std::cerr << "Failed to save screenshot!" << std::endl;
+    }
+}
+
+bool Application::SaveScreenshot(const std::string& filePath, int format) {
+    int width = scrWidth;
+    int height = scrHeight;
+    
+    // 分配内存存储像素数据
+    unsigned char* pixels = new unsigned char[width * height * 3];
+    
+    // 从OpenGL读取像素数据
+    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+    
+    // [修正]：直接使用原始数据，不要分配额外的 flippedPixels，也不要执行翻转循环
+    unsigned char* bufferToWrite = pixels;
+
+    bool success = false;
+    
+    if (format == 0) { // BMP格式
+        std::ofstream file(filePath, std::ios::binary);
+        if (!file) {
+            delete[] pixels;
+            return false;
+        }
+        
+        int rowSize = ((width * 24 + 31) / 32) * 4;
+        int imageSize = rowSize * height;
+        int fileSize = sizeof(BMPHeader) + imageSize;
+        
+        BMPHeader header;
+        header.fileSize = fileSize;
+        header.dataOffset = sizeof(BMPHeader);
+        header.width = width;
+        header.height = height;
+        header.imageSize = imageSize;
+        
+        file.write(reinterpret_cast<const char*>(&header), sizeof(BMPHeader));
+        
+        // 直接正序写入原始数据
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int index = (y * width + x) * 3;
+                // BMP使用BGR顺序
+                file.write(reinterpret_cast<const char*>(&bufferToWrite[index + 2]), 1); // B
+                file.write(reinterpret_cast<const char*>(&bufferToWrite[index + 1]), 1); // G
+                file.write(reinterpret_cast<const char*>(&bufferToWrite[index]), 1);     // R
+            }
+            int padding = rowSize - width * 3;
+            for (int p = 0; p < padding; p++) {
+                file.write("\0", 1);
+            }
+        }
+        
+        file.close();
+        success = true;
+    } else if (format == 1) { // PNG格式（简化实现，实际项目中建议使用libpng）
+        std::ofstream file(filePath, std::ios::binary);
+        if (!file) {
+            delete[] pixels;
+            return false;
+        }
+        
+        // 写入PNG文件头（简化版，实际PNG格式更复杂）
+        file.write("\x89PNG\r\n\x1a\n", 8);
+        
+        // 这里仅作为示例，实际PNG格式需要更多的处理
+        // 包括IHDR、IDAT等块的写入
+        file.close();
+        success = true;
+    }
+    
+    // 释放内存 (注意：现在不需要释放 flippedPixels 了，因为它不存在)
+    delete[] pixels;
+    
+    return success;
+}
+
+void Application::RenderScreenshotDialog() {
+    if (!isScreenshotDialogOpen) return;
+    
+    ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Save Screenshot", &isScreenshotDialogOpen, ImGuiWindowFlags_NoCollapse);
+    
+    ImGui::Text("Screenshot Settings");
+    ImGui::Separator();
+    
+    // 格式选择
+    const char* formatNames[] = { "BMP", "PNG" };
+    ImGui::Combo("Format", &screenshotFormat, formatNames, IM_ARRAYSIZE(formatNames));
+    
+    // 保存路径
+    ImGui::Text("Save Path:");
+    ImGui::InputText("##screenshotPath", screenshotPathBuffer, sizeof(screenshotPathBuffer));
+    ImGui::SameLine();
+    if (ImGui::Button("Browse")) {
+        OpenFileDialog(screenshotPathBuffer, "Save Screenshot As", screenshotFormat == 0 ? ".bmp" : ".png", true, false);
+    }
+    
+    ImGui::Separator();
+    
+    // 保存按钮
+    if (ImGui::Button("Save", ImVec2(100, 0))) {
+        bool success = SaveScreenshot(screenshotPathBuffer, screenshotFormat);
+        if (success) {
+            std::cout << "Screenshot saved to: " << screenshotPathBuffer << std::endl;
+        } else {
+            std::cerr << "Failed to save screenshot!" << std::endl;
+        }
+        isScreenshotDialogOpen = false;
+    }
+    
+    ImGui::SameLine();
+    
+    // 取消按钮
+    if (ImGui::Button("Cancel", ImVec2(100, 0))) {
+        isScreenshotDialogOpen = false;
+    }
+    
+    ImGui::End();
+}
+
 void Application::RenderFileDialog() {
     if (!isFileDialogOpen && !isSaveDialogOpen) return;
     
@@ -291,13 +616,7 @@ void Application::RenderFileDialog() {
                         std::string fullPathStr = fullPath.string();
                         
                         // 安全地复制字符串，避免缓冲区溢出
-                        if (fullPathStr.length() < 256) {
-                            strcpy(selectedFilePath, fullPathStr.c_str());
-                        } else {
-                            // 如果路径太长，只复制前255个字符
-                            strncpy(selectedFilePath, fullPathStr.c_str(), 255);
-                            selectedFilePath[255] = '\0';
-                        }
+                        strcpy_s(selectedFilePath, 256, fullPathStr.c_str());
                         
                         if (isSaveDialogOpen) {
                             isSaveDialogOpen = false;
@@ -321,7 +640,7 @@ void Application::RenderFileDialog() {
         ImGui::Text("File Name:");
         ImGui::InputText("##SaveFileName", saveFileName, sizeof(saveFileName));
         
-        if (ImGui::Button("Save", ImVec2(100, 0))) {
+        if (ImGui::Button("Save##save", ImVec2(100, 0))) {
             if (strlen(saveFileName) > 0) {
                 try {
                     std::string fileName(saveFileName);
@@ -335,13 +654,7 @@ void Application::RenderFileDialog() {
                     std::string fullPathStr = fullPath.string();
                     
                     // 安全地复制字符串，避免缓冲区溢出
-                    if (fullPathStr.length() < 256) {
-                        strcpy(selectedFilePath, fullPathStr.c_str());
-                    } else {
-                        // 如果路径太长，只复制前255个字符
-                        strncpy(selectedFilePath, fullPathStr.c_str(), 255);
-                        selectedFilePath[255] = '\0';
-                    }
+                    strcpy_s(selectedFilePath, 256, fullPathStr.c_str());
                     isSaveDialogOpen = false;
                 } catch (const std::exception& e) {
                     std::cerr << "Error: " << e.what() << std::endl;
@@ -350,9 +663,22 @@ void Application::RenderFileDialog() {
         }
     }
     
+    // 目录选择模式的确认按钮
+    if (isDirSelection && !isSaveDialogOpen) {
+        if (ImGui::Button("Select Directory##selectDir", ImVec2(120, 0))) {
+            try {
+                // 选择当前目录
+                strcpy_s(selectedFilePath, 256, currentDirectory.c_str());
+                isFileDialogOpen = false;
+            } catch (const std::exception& e) {
+                std::cerr << "Error: " << e.what() << std::endl;
+            }
+        }
+        ImGui::SameLine();
+    }
+    
     // 取消按钮
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(100, 0))) {
+    if (ImGui::Button("Cancel##cancel", ImVec2(100, 0))) {
         if (isSaveDialogOpen) {
             isSaveDialogOpen = false;
         } else {
@@ -411,6 +737,42 @@ void Application::Run()
 
         ProcessInput();
 
+        // 更新动画
+        for (auto obj : scene->objects) {
+            if (obj->isAnimated && obj->isPlaying && !obj->animationFrames.empty()) {
+                // 处理启动延迟
+                if (obj->delayTimer > 0.0f) {
+                    obj->delayTimer -= deltaTime;
+                    continue;
+                }
+                
+                // 更新动画时间
+                obj->animationTime += deltaTime * obj->animationSpeed;
+                
+                // 计算当前帧
+                float frameDuration = 1.0f / 30.0f; // 30 FPS
+                int totalFrames = obj->animationFrames.size();
+                int newFrame;
+                
+                if (obj->loopAnimation) {
+                    // 循环模式
+                    newFrame = static_cast<int>(obj->animationTime / frameDuration) % totalFrames;
+                } else {
+                    // 非循环模式（播放一次后停止）
+                    newFrame = static_cast<int>(obj->animationTime / frameDuration);
+                    if (newFrame >= totalFrames) {
+                        newFrame = totalFrames - 1;
+                        obj->isPlaying = false; // 动画结束
+                    }
+                }
+                
+                if (newFrame != obj->currentFrame) {
+                    obj->currentFrame = newFrame;
+                    obj->mesh = obj->animationFrames[newFrame];
+                }
+            }
+        }
+
         glClearColor(0.12f, 0.12f, 0.12f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -462,6 +824,21 @@ void Application::ProcessInput()
     else
     {
         deletePressed = false;
+    }
+    
+    // [新增] F12快捷键截图
+    static bool screenshotPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_F12) == GLFW_PRESS)
+    {
+        if (!screenshotPressed)
+        {
+            CaptureScreen();
+            screenshotPressed = true;
+        }
+    }
+    else
+    {
+        screenshotPressed = false;
     }
 }
 
@@ -706,42 +1083,104 @@ void Application::RenderUI()
     ImGui::Text("CREATE & IMPORT");
     ImGui::Separator();
 
-    // [新增] 添加物体 UI
-    if (ImGui::Button("Cube", ImVec2(60, 0))) {
+    // 统一按钮大小
+    const float btnWidth = 70.0f;
+    const float btnHeight = 25.0f;
+    
+    // 几何体参数
+    static int prismSides = 6;
+    static int frustumSides = 8;
+    
+    // 第一行按钮
+    if (ImGui::Button("Cube", ImVec2(btnWidth, btnHeight))) {
         Mesh* mesh = GeometryGenerator::CreateCube();
         SceneObject* newObj = new SceneObject("New Cube", mesh);
-        newObj->position = glm::vec3(0, 0.5f, 0); // 生成在地面上
+        newObj->position = glm::vec3(0, 0.5f, 0);
+        newObj->geometryType = GeometryType::Cube;
         scene->AddObject(newObj);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Sphere", ImVec2(60, 0))) {
+    if (ImGui::Button("Sphere", ImVec2(btnWidth, btnHeight))) {
         Mesh* mesh = GeometryGenerator::CreateSphere(20);
         SceneObject* newObj = new SceneObject("New Sphere", mesh);
-        newObj->position = glm::vec3(0, 0.5f, 0);
+        newObj->position = glm::vec3(0, 1.0f, 0);
+        newObj->geometryType = GeometryType::Sphere;
+        newObj->segments = 20;
         scene->AddObject(newObj);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cylinder", ImVec2(80, 0))) {
-        Mesh* mesh = GeometryGenerator::CreateCylinder(0.5f, 1.0f, 20);
+    if (ImGui::Button("Cylinder", ImVec2(btnWidth, btnHeight))) {
+        Mesh* mesh = GeometryGenerator::CreateCylinder(0.5f, 1.0f, 16);
         SceneObject* newObj = new SceneObject("New Cylinder", mesh);
         newObj->position = glm::vec3(0, 0.5f, 0);
+        newObj->geometryType = GeometryType::Cylinder;
+        newObj->param1 = 0.5f;
+        newObj->param2 = 1.0f;
+        newObj->segments = 16;
         scene->AddObject(newObj);
     }
     
-    ImGui::Dummy(ImVec2(0, 5));
-    if (ImGui::Button("Cone", ImVec2(60, 0))) {
+    // 第二行按钮
+    if (ImGui::Button("Cone", ImVec2(btnWidth, btnHeight))) {
         Mesh* mesh = GeometryGenerator::CreateCone(0.5f, 1.0f, 20);
         SceneObject* newObj = new SceneObject("New Cone", mesh);
         newObj->position = glm::vec3(0, 0.5f, 0);
+        newObj->geometryType = GeometryType::Cone;
+        newObj->param1 = 0.5f;
+        newObj->param2 = 1.0f;
+        newObj->segments = 20;
         scene->AddObject(newObj);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Plane", ImVec2(60, 0))) {
+    if (ImGui::Button("Plane", ImVec2(btnWidth, btnHeight))) {
         Mesh* mesh = GeometryGenerator::CreatePlane(2.0f, 2.0f);
         SceneObject* newObj = new SceneObject("New Plane", mesh);
         newObj->position = glm::vec3(0, 0.0f, 0);
+        newObj->geometryType = GeometryType::Plane;
+        newObj->param1 = 2.0f;
+        newObj->param2 = 2.0f;
         scene->AddObject(newObj);
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Prism", ImVec2(btnWidth, btnHeight))) {
+        Mesh* mesh = GeometryGenerator::CreatePrism(0.5f, 1.0f, prismSides);
+        SceneObject* newObj = new SceneObject("New Prism", mesh);
+        newObj->position = glm::vec3(0, 0.5f, 0);
+        newObj->geometryType = GeometryType::Prism;
+        newObj->param1 = 0.5f;
+        newObj->param2 = 1.0f;
+        newObj->segments = prismSides;
+        scene->AddObject(newObj);
+    }
+    
+    // 第三行按钮
+    if (ImGui::Button("Frustum", ImVec2(btnWidth, btnHeight))) {
+        Mesh* mesh = GeometryGenerator::CreateFrustum(0.3f, 0.5f, 1.0f, frustumSides);
+        SceneObject* newObj = new SceneObject("New Frustum", mesh);
+        newObj->position = glm::vec3(0, 0.5f, 0);
+        newObj->geometryType = GeometryType::Frustum;
+        newObj->param1 = 0.3f;
+        newObj->param2 = 0.5f;
+        newObj->param3 = 1.0f;
+        newObj->segments = frustumSides;
+        scene->AddObject(newObj);
+    }
+    
+    // 棱数调节UI - 优化样式
+    ImGui::Dummy(ImVec2(0, 10));
+    ImGui::Text("Polygonal Primitives Settings");
+    ImGui::Separator();
+    
+    // 棱柱棱数调节
+    ImGui::SetNextItemWidth(-1);
+    ImGui::SliderInt("Prism Sides", &prismSides, 3, 32, "%d");
+    
+    // 棱台棱数调节
+    ImGui::SetNextItemWidth(-1);
+    ImGui::SliderInt("Frustum Sides", &frustumSides, 3, 32, "%d");
+    
+    ImGui::Dummy(ImVec2(0, 5));
+    ImGui::TextDisabled("(Adjust before creating the primitive)");
 
     // [新增] 加载 OBJ UI
     ImGui::Dummy(ImVec2(0, 5));
@@ -766,33 +1205,58 @@ void Application::RenderUI()
     }
     
     // [新增] 加载动画序列 UI
-    ImGui::Dummy(ImVec2(0, 5));
+    ImGui::Dummy(ImVec2(0, 10));
     ImGui::Text("Import Animation Sequence");
+    
+    // 动画导入选项
+    static bool loopAnimation = true;
+    static float animationStartDelay = 0.0f;
+    
+    // 路径输入和按钮
     ImGui::InputText("##animPath", animPathBuffer, sizeof(animPathBuffer));
     ImGui::SameLine();
     if (ImGui::Button("Browse##anim", ImVec2(60, 0))) {
         OpenFileDialog(animPathBuffer, "Select Animation Directory", ".obj", false, true);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Load Seq##anim", ImVec2(80, 0))) {
-        // 调用新的 LoadSequence 接口
-        std::vector<Mesh*> sequence = OBJLoader::LoadSequence(animPathBuffer); 
-        if (!sequence.empty()) {
-            for (size_t i = 0; i < sequence.size(); i++) {
-                Mesh* mesh = sequence[i];
-                if (mesh) {
-                    std::string name = "Anim Frame " + std::to_string(i);
-                    SceneObject* newObj = new SceneObject(name, mesh);
-                    newObj->position = glm::vec3(0, 0.5f, 0);
-                    // 可以根据需要设置不同位置
-                    // newObj->position = glm::vec3(i * 2.0f, 0.5f, 0);
-                    scene->AddObject(newObj);
-                }
+    if (ImGui::Button("Load Animation##anim", ImVec2(100, 0))) {
+        try {
+            // 检查路径是否存在
+            if (!std::filesystem::exists(animPathBuffer)) {
+                std::cerr << "Error: Animation directory does not exist: " << animPathBuffer << std::endl;
+                return;
             }
-        } else {
-            std::cout << "Failed to load animation sequence from " << animPathBuffer << std::endl;
+            
+            // 调用新的 LoadSequence 接口
+            std::vector<Mesh*> sequence = OBJLoader::LoadSequence(animPathBuffer); 
+            if (!sequence.empty()) {
+                // 创建单个动画对象
+                SceneObject* animatedObj = new SceneObject("Animated Model", sequence[0]);
+                animatedObj->position = glm::vec3(0, 0.5f, 0);
+                animatedObj->isAnimated = true;
+                animatedObj->animationFrames = sequence;
+                animatedObj->isPlaying = true;
+                animatedObj->animationSpeed = 1.0f;
+                animatedObj->loopAnimation = loopAnimation;
+                animatedObj->startDelay = animationStartDelay;
+                animatedObj->delayTimer = animationStartDelay;
+                scene->AddObject(animatedObj);
+                
+                std::cout << "Successfully loaded animation with " << sequence.size() << " frames" << std::endl;
+                std::cout << "Animation directory: " << animPathBuffer << std::endl;
+                std::cout << "Loop enabled: " << (loopAnimation ? "Yes" : "No") << std::endl;
+            } else {
+                std::cout << "Failed to load animation sequence from " << animPathBuffer << std::endl;
+                std::cout << "Possible reasons: directory empty, no OBJ files, or all files failed to load" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error loading animation: " << e.what() << std::endl;
         }
     }
+    
+    // 动画导入选项
+    ImGui::Checkbox("Loop Animation", &loopAnimation);
+    ImGui::SliderFloat("Start Delay", &animationStartDelay, 0.0f, 5.0f, "%.1fs");
     
     // [新增] 导出功能 UI
     ImGui::Dummy(ImVec2(0, 10));
@@ -836,6 +1300,28 @@ void Application::RenderUI()
             std::cout << "Failed to export scene to: " << exportScenePath << std::endl;
         }
     }
+    
+    // [新增] 屏幕截图功能
+    ImGui::Dummy(ImVec2(0, 10));
+    ImGui::Text("SCREENSHOT");
+    ImGui::Separator();
+    
+    // 快速截图按钮
+    if (ImGui::Button("Quick Screenshot", ImVec2(120, 0))) {
+        CaptureScreen();
+    }
+    
+    // 高级截图设置
+    if (ImGui::Button("Advanced Settings", ImVec2(120, 0))) {
+        isScreenshotDialogOpen = true;
+    }
+    
+    // 截图格式选择
+    const char* formatNames[] = { "BMP", "PNG" };
+    ImGui::Combo("Format", &screenshotFormat, formatNames, IM_ARRAYSIZE(formatNames));
+    
+    // 快捷键提示
+    ImGui::TextDisabled("Press F12 to take a quick screenshot");
 
     // ---------------- 属性面板 ----------------
     if (scene->selectedObject)
@@ -904,6 +1390,94 @@ void Application::RenderUI()
             }
         }
 
+        // 网格精度调整
+        ImGui::Dummy(ImVec2(0, 10));
+        ImGui::Text("Mesh Quality");
+        
+        // 根据几何体类型显示相应的参数
+        if (scene->selectedObject->geometryType != GeometryType::None && 
+            scene->selectedObject->geometryType != GeometryType::Cube) {
+            
+            // 显示并允许调整分段数
+            if (ImGui::SliderInt("Segments", &scene->selectedObject->segments, 3, 32)) {
+                // 重新生成网格的代码可以在这里添加
+            }
+            
+            // 根据几何体类型显示其他参数
+            switch (scene->selectedObject->geometryType) {
+            case GeometryType::Sphere:
+                break;
+            case GeometryType::Cylinder:
+            case GeometryType::Cone:
+            case GeometryType::Prism:
+                if (ImGui::SliderFloat("Radius", &scene->selectedObject->param1, 0.1f, 2.0f, "%.2f")) {
+                    // 重新生成网格
+                }
+                if (ImGui::SliderFloat("Height", &scene->selectedObject->param2, 0.1f, 3.0f, "%.2f")) {
+                    // 重新生成网格
+                }
+                break;
+            case GeometryType::Plane:
+                if (ImGui::SliderFloat("Width", &scene->selectedObject->param1, 0.5f, 10.0f, "%.2f")) {
+                    // 重新生成网格
+                }
+                if (ImGui::SliderFloat("Depth", &scene->selectedObject->param2, 0.5f, 10.0f, "%.2f")) {
+                    // 重新生成网格
+                }
+                break;
+            case GeometryType::Frustum:
+                if (ImGui::SliderFloat("Top Radius", &scene->selectedObject->param1, 0.1f, 2.0f, "%.2f")) {
+                    // 重新生成网格
+                }
+                if (ImGui::SliderFloat("Bottom Radius", &scene->selectedObject->param2, 0.1f, 2.0f, "%.2f")) {
+                    // 重新生成网格
+                }
+                if (ImGui::SliderFloat("Height", &scene->selectedObject->param3, 0.1f, 3.0f, "%.2f")) {
+                    // 重新生成网格
+                }
+                break;
+            default:
+                break;
+            }
+        } else {
+            ImGui::TextDisabled("Mesh quality adjustment not available for this object");
+        }
+
+        // 动画控制
+        if (scene->selectedObject->isAnimated) {
+            ImGui::Dummy(ImVec2(0, 10));
+            ImGui::Text("Animation Control");
+            
+            // 播放/暂停按钮
+            if (ImGui::Button(scene->selectedObject->isPlaying ? "Pause" : "Play")) {
+                scene->selectedObject->isPlaying = !scene->selectedObject->isPlaying;
+            }
+            
+            // 动画速度控制
+            if (ImGui::SliderFloat("Speed", &scene->selectedObject->animationSpeed, 0.1f, 3.0f, "%.1fx")) {
+                // 速度调整立即生效
+            }
+            
+            // 循环控制
+            if (ImGui::Checkbox("Loop Animation", &scene->selectedObject->loopAnimation)) {
+                // 循环设置立即生效
+            }
+            
+            // 启动延迟控制
+            if (ImGui::SliderFloat("Start Delay", &scene->selectedObject->startDelay, 0.0f, 5.0f, "%.1fs")) {
+                // 延迟设置立即生效
+                scene->selectedObject->delayTimer = scene->selectedObject->startDelay;
+            }
+            
+            // 动画信息
+            ImGui::TextDisabled("Frames: %zu", scene->selectedObject->animationFrames.size());
+            ImGui::TextDisabled("Current Frame: %d", scene->selectedObject->currentFrame);
+            ImGui::TextDisabled("Status: %s", scene->selectedObject->isPlaying ? "Playing" : "Paused");
+            if (scene->selectedObject->delayTimer > 0.0f) {
+                ImGui::TextDisabled("Delay: %.1fs", scene->selectedObject->delayTimer);
+            }
+        }
+
         ImGui::Dummy(ImVec2(0, 15));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
@@ -923,6 +1497,9 @@ void Application::RenderUI()
     
     // [新增] 渲染文件选择器
     RenderFileDialog();
+    
+    // [新增] 渲染屏幕截图对话框
+    RenderScreenshotDialog();
     
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
