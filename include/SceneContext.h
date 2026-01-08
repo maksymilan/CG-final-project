@@ -13,15 +13,19 @@ struct SceneObject {
     glm::vec3 position;
     glm::vec3 rotation;
     glm::vec3 scale;
-    glm::vec3 color;
+    glm::vec3 color; // 用作 Diffuse Color
     
-    // [新增] 纹理路径，用于 UI 显示和 Part C 加载
-    std::string texturePath; 
-    // [新增] 纹理ID (如果加载成功)
-    unsigned int textureId = 0; 
+    // --- [新增/修改] 材质属性 ---
+    float shininess;       // 反光度 (例如 32.0f)
+    float specularStrength; // 镜面反射强度 (0.0f - 1.0f)
+    bool useTexture;       // 是否启用纹理的开关
+    
+    std::string texturePath;
+    unsigned int textureId = 0;
 
-    SceneObject(std::string n, Mesh* m) 
-        : name(n), mesh(m), position(0.0f), rotation(0.0f), scale(1.0f), color(1.0f), texturePath("") {}
+    SceneObject(std::string n, Mesh* m)
+        : name(n), mesh(m), position(0.0f), rotation(0.0f), scale(1.0f), color(1.0f),
+          texturePath(""), shininess(32.0f), specularStrength(0.5f), useTexture(false) {}
 };
 
 class SceneContext {

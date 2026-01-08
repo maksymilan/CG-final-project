@@ -642,6 +642,17 @@ void Application::RenderScene()
         model = glm::rotate(model, glm::radians(obj->rotation.z), glm::vec3(0, 0, 1));
         model = glm::scale(model, obj->scale);
 
+        // [新增] 传递材质 Uniforms 到 Shader
+        // 确保与 fragment.glsl 中的 struct Material 对应
+        mainShader->setFloat("material.shininess", obj->shininess);
+        // 如果 Shader 中有 specular 强度控制，也可以传:
+        mainShader->setFloat("material.specularStrength", obj->specularStrength);
+        
+        // 控制是否使用纹理 (Fragment shader 需要这个 uniform)
+        // 检查 mesh 是否真的有纹理，并且用户开启了 useTexture
+        bool hasTex = !obj->mesh->textures.empty() && obj->useTexture;
+        mainShader->setInt("useTexture", hasTex ? 1 : 0);
+
         // [Part C] Use Renderer to render mesh
         mainShader->setVec3("objectColor", obj->color);
         PartC::Renderer::RenderMesh(obj->mesh, *mainShader, model);
@@ -860,46 +871,57 @@ void Application::RenderUI()
 
         ImGui::Dummy(ImVec2(0, 5));
         ImGui::Text("Material & Texture");
-        ImGui::ColorEdit3("Color", (float *)&scene->selectedObject->color);
+        ImGui::ColorEdit3("Diffuse Color", (float *)&scene->selectedObject->color);
 
-        // [新增] 材质 Shininess 控制
-        // 注意：目前 Shininess 是在 Shader 中统一设置的，为了支持单个物体，我们需要修改 Shader 和 Renderer
-        // 这里暂时演示全局 Shininess 或者预留接口
-        static float shininess = 32.0f;
-        if (ImGui::DragFloat("Shininess", &shininess, 1.0f, 2.0f, 256.0f))
-        {
-            // TODO: 将此值传递给 Shader (目前 Renderer::SetupLights 中是硬编码的)
-            // 我们可以临时通过 uniform 传递，或者将其作为 SceneObject 的属性
-        }
+        // [新增] 材质参数编辑
+        ImGui::DragFloat("Shininess", &scene->selectedObject->shininess, 1.0f, 2.0f, 256.0f);
+        ImGui::DragFloat("Specular Str", &scene->selectedObject->specularStrength, 0.01f, 0.0f, 1.0f);
 
-        // [新增] 纹理 UI
-        ImGui::Text("Texture Path (Absolute)");
-        static char texBuf[256] = "";
-        ImGui::InputText("##texPath", texBuf, sizeof(texBuf));
-        ImGui::SameLine();
-        if (ImGui::Button("Apply Tex"))
-        {
-            if (scene->selectedObject->mesh)
-            {
-                // 1. 清除旧纹理
-                scene->selectedObject->mesh->textures.clear();
+        // [新增] 纹理控制
+        ImGui::Checkbox("Enable Texture", &scene->selectedObject->useTexture);
 
-                // 2. 加载新纹理 (Part C 功能)
-                std::string path = texBuf;
-                Texture diffuseMap(path.c_str(), "diffuse");
-                Texture specularMap(path.c_str(), "specular"); // 暂时复用同一张图
+        if (scene->selectedObject->useTexture) {
+            ImGui::Text("Texture Map:");
+            
+            // 显示当前纹理路径（如果有）
+            if (!scene->selectedObject->texturePath.empty()) {
+                ImGui::TextWrapped("%s", scene->selectedObject->texturePath.c_str());
+            } else {
+                ImGui::TextDisabled("No Texture Loaded");
+            }
 
-                // 3. 应用到 Mesh
-                if (diffuseMap.id != 0)
-                {
-                    scene->selectedObject->mesh->textures.push_back(diffuseMap);
-                    scene->selectedObject->mesh->textures.push_back(specularMap);
-                    scene->selectedObject->texturePath = path;
-                    std::cout << "Successfully loaded texture: " << path << std::endl;
-                }
-                else
-                {
-                    std::cerr << "Failed to load texture: " << path << std::endl;
+            // 使用你已有的文件选择器逻辑
+            static char texPathBuffer[256] = "";
+            ImGui::InputText("##texPath", texPathBuffer, sizeof(texPathBuffer));
+            ImGui::SameLine();
+            
+            // 浏览按钮
+            if (ImGui::Button("Browse##Tex")) {
+                // 调用 Application 类里现有的打开文件对话框函数
+                OpenFileDialog(texPathBuffer, "Select Texture", "", false, false);
+            }
+            
+            ImGui::SameLine();
+            // 应用按钮
+            if (ImGui::Button("Load")) {
+                if (scene->selectedObject->mesh) {
+                    std::string path = texPathBuffer;
+                    // 1. 清除旧纹理 (简单起见先清空，支持多纹理需更复杂逻辑)
+                    scene->selectedObject->mesh->textures.clear();
+
+                    // 2. 加载新纹理
+                    // 注意：需要确保 Texture 类构造函数能正确加载图片(stb_image)
+                    Texture diffuseMap(path.c_str(), "diffuse");
+                    Texture specularMap(path.c_str(), "specular");
+
+                    if (diffuseMap.id != 0) {
+                        scene->selectedObject->mesh->textures.push_back(diffuseMap);
+                        scene->selectedObject->mesh->textures.push_back(specularMap);
+                        scene->selectedObject->texturePath = path;
+                        scene->selectedObject->useTexture = true; // 自动开启
+                    } else {
+                        std::cerr << "Failed to load texture: " << path << std::endl;
+                    }
                 }
             }
         }

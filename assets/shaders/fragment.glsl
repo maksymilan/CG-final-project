@@ -10,6 +10,7 @@ struct Material {
     sampler2D diffuse;
     sampler2D specular;
     float shininess;
+    float specularStrength;
 }; 
 
 struct DirLight {
@@ -105,7 +106,7 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     
     vec3 ambient = light.ambient * texDiff;
     vec3 diffuse = light.diffuse * diff * texDiff;
-    vec3 specular = light.specular * spec * texSpec;
+    vec3 specular = light.specular * material.specularStrength * spec * texSpec;
     
     float shadow = ShadowCalculation(FragPosLightSpace, normal, lightDir);       
     return (ambient + (1.0 - shadow) * (diffuse + specular));
