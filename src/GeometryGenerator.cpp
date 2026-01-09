@@ -22,3 +22,11 @@ Mesh* GeometryGenerator::CreateCone(float radius, float height, int segments) {
 Mesh* GeometryGenerator::CreatePlane(float width, float depth) {
     return GeometryUtils::CreatePlane(width, depth);
 }
+
+Mesh* GeometryGenerator::CreatePrism(float radius, float height, int segments) {
+    return GeometryUtils::CreatePrism(radius, height, segments);
+}
+
+Mesh* GeometryGenerator::CreateFrustum(float topRadius, float bottomRadius, float height, int segments) {
+    return GeometryUtils::CreateFrustum(topRadius, bottomRadius, height, segments);
+}

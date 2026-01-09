@@ -324,3 +324,202 @@ Mesh* GeometryUtils::CreatePlane(float width, float depth)
 
     return new Mesh(vertices, indices, textures);
 }
+
+Mesh* GeometryUtils::CreatePrism(float radius, float height, int segments)
+{
+    std::vector<Vertex> vertices;
+    std::vector<unsigned int> indices;
+    std::vector<Texture> textures;
+
+    float halfHeight = height / 2.0f;
+
+    // --- Generate side vertices --- 
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
+
+        // Bottom vertex (side)
+        glm::vec3 bottomPos(radius * cosAngle, -halfHeight, radius * sinAngle);
+        glm::vec3 sideNormal = glm::normalize(glm::vec3(cosAngle, 0.0f, sinAngle));
+        vertices.push_back({bottomPos, sideNormal, glm::vec2((float)i / segments, 0.0f)});
+
+        // Top vertex (side)
+        glm::vec3 topPos(radius * cosAngle, halfHeight, radius * sinAngle);
+        vertices.push_back({topPos, sideNormal, glm::vec2((float)i / segments, 1.0f)});
+    }
+
+    // --- Generate bottom face vertices --- 
+    // Bottom center
+    int bottomCenterIdx = vertices.size();
+    vertices.push_back({glm::vec3(0.0f, -halfHeight, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.5f, 0.5f)});
+    
+    // Bottom edge vertices
+    int bottomEdgeStartIdx = vertices.size();
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
+        
+        glm::vec3 pos(radius * cosAngle, -halfHeight, radius * sinAngle);
+        vertices.push_back({pos, glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.5f + 0.5f * cosAngle, 0.5f + 0.5f * sinAngle)});
+    }
+
+    // --- Generate top face vertices --- 
+    // Top center
+    int topCenterIdx = vertices.size();
+    vertices.push_back({glm::vec3(0.0f, halfHeight, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.5f, 0.5f)});
+    
+    // Top edge vertices
+    int topEdgeStartIdx = vertices.size();
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
+        
+        glm::vec3 pos(radius * cosAngle, halfHeight, radius * sinAngle);
+        vertices.push_back({pos, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.5f + 0.5f * cosAngle, 0.5f + 0.5f * sinAngle)});
+    }
+
+    // --- Generate side indices --- 
+    for (int i = 0; i < segments; i++) {
+        int current = i * 2;
+        int next = (i + 1) * 2;
+
+        // First triangle
+        indices.push_back(current);
+        indices.push_back(current + 1);
+        indices.push_back(next + 1);
+
+        // Second triangle
+        indices.push_back(current);
+        indices.push_back(next + 1);
+        indices.push_back(next);
+    }
+
+    // --- Generate bottom face indices --- 
+    for (int i = 0; i < segments; i++) {
+        indices.push_back(bottomCenterIdx);
+        indices.push_back(bottomEdgeStartIdx + i + 1);
+        indices.push_back(bottomEdgeStartIdx + i);
+    }
+
+    // --- Generate top face indices --- 
+    for (int i = 0; i < segments; i++) {
+        indices.push_back(topCenterIdx);
+        indices.push_back(topEdgeStartIdx + i);
+        indices.push_back(topEdgeStartIdx + i + 1);
+    }
+
+    return new Mesh(vertices, indices, textures);
+}
+
+Mesh* GeometryUtils::CreateFrustum(float topRadius, float bottomRadius, float height, int segments)
+{
+    std::vector<Vertex> vertices;
+    std::vector<unsigned int> indices;
+    std::vector<Texture> textures;
+
+    float halfHeight = height / 2.0f;
+
+    // --- Generate side vertices --- 
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
+
+        // Bottom vertex (side)
+        glm::vec3 bottomPos(bottomRadius * cosAngle, -halfHeight, bottomRadius * sinAngle);
+        vertices.push_back({bottomPos, glm::vec3(0.0f), glm::vec2((float)i / segments, 0.0f)});
+
+        // Top vertex (side)
+        glm::vec3 topPos(topRadius * cosAngle, halfHeight, topRadius * sinAngle);
+        vertices.push_back({topPos, glm::vec3(0.0f), glm::vec2((float)i / segments, 1.0f)});
+    }
+
+    // --- Generate bottom face vertices --- 
+    // Bottom center
+    int bottomCenterIdx = vertices.size();
+    vertices.push_back({glm::vec3(0.0f, -halfHeight, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.5f, 0.5f)});
+    
+    // Bottom edge vertices
+    int bottomEdgeStartIdx = vertices.size();
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
+        
+        glm::vec3 pos(bottomRadius * cosAngle, -halfHeight, bottomRadius * sinAngle);
+        vertices.push_back({pos, glm::vec3(0.0f, -1.0f, 0.0f), glm::vec2(0.5f + 0.5f * cosAngle, 0.5f + 0.5f * sinAngle)});
+    }
+
+    // --- Generate top face vertices --- 
+    // Top center
+    int topCenterIdx = vertices.size();
+    vertices.push_back({glm::vec3(0.0f, halfHeight, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.5f, 0.5f)});
+    
+    // Top edge vertices
+    int topEdgeStartIdx = vertices.size();
+    for (int i = 0; i <= segments; i++) {
+        float angle = (float)i / segments * 2.0f * PI;
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
+        
+        glm::vec3 pos(topRadius * cosAngle, halfHeight, topRadius * sinAngle);
+        vertices.push_back({pos, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.5f + 0.5f * cosAngle, 0.5f + 0.5f * sinAngle)});
+    }
+
+    // --- Generate side indices --- 
+    for (int i = 0; i < segments; i++) {
+        int current = i * 2;
+        int next = (i + 1) * 2;
+
+        // First triangle
+        indices.push_back(current);
+        indices.push_back(current + 1);
+        indices.push_back(next + 1);
+
+        // Second triangle
+        indices.push_back(current);
+        indices.push_back(next + 1);
+        indices.push_back(next);
+    }
+
+    // --- Generate bottom face indices --- 
+    for (int i = 0; i < segments; i++) {
+        indices.push_back(bottomCenterIdx);
+        indices.push_back(bottomEdgeStartIdx + i + 1);
+        indices.push_back(bottomEdgeStartIdx + i);
+    }
+
+    // --- Generate top face indices --- 
+    for (int i = 0; i < segments; i++) {
+        indices.push_back(topCenterIdx);
+        indices.push_back(topEdgeStartIdx + i);
+        indices.push_back(topEdgeStartIdx + i + 1);
+    }
+
+    // --- Calculate side face normals --- 
+    for (int i = 0; i < segments; i++) {
+        int current = i * 2;
+        int next = (i + 1) * 2;
+
+        // Calculate triangle vertices for normal calculation
+        glm::vec3 v0 = vertices[current].Position;
+        glm::vec3 v1 = vertices[current + 1].Position;
+        glm::vec3 v2 = vertices[next + 1].Position;
+        
+        // Calculate normal for this face
+        glm::vec3 edge1 = v1 - v0;
+        glm::vec3 edge2 = v2 - v0;
+        glm::vec3 normal = glm::normalize(glm::cross(edge1, edge2));
+        
+        // Update normals for all vertices in this face
+        vertices[current].Normal = normal;
+        vertices[current + 1].Normal = normal;
+        vertices[next + 1].Normal = normal;
+        vertices[next].Normal = normal;
+    }
+
+    return new Mesh(vertices, indices, textures);
+}
