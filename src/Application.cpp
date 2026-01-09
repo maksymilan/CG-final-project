@@ -1,5 +1,6 @@
 #include "Application.h"
 #include <iostream>
+#include <cstdio>
 #include <algorithm>
 #include <vector>
 #include <filesystem>
@@ -616,7 +617,7 @@ void Application::RenderFileDialog() {
                         std::string fullPathStr = fullPath.string();
                         
                         // 安全地复制字符串，避免缓冲区溢出
-                        strcpy_s(selectedFilePath, 256, fullPathStr.c_str());
+                        snprintf(selectedFilePath, 256, "%s", fullPathStr.c_str());
                         
                         if (isSaveDialogOpen) {
                             isSaveDialogOpen = false;
@@ -654,7 +655,7 @@ void Application::RenderFileDialog() {
                     std::string fullPathStr = fullPath.string();
                     
                     // 安全地复制字符串，避免缓冲区溢出
-                    strcpy_s(selectedFilePath, 256, fullPathStr.c_str());
+                    snprintf(selectedFilePath, 256, "%s", fullPathStr.c_str());
                     isSaveDialogOpen = false;
                 } catch (const std::exception& e) {
                     std::cerr << "Error: " << e.what() << std::endl;
@@ -668,7 +669,7 @@ void Application::RenderFileDialog() {
         if (ImGui::Button("Select Directory##selectDir", ImVec2(120, 0))) {
             try {
                 // 选择当前目录
-                strcpy_s(selectedFilePath, 256, currentDirectory.c_str());
+                snprintf(selectedFilePath, 256, "%s", currentDirectory.c_str());
                 isFileDialogOpen = false;
             } catch (const std::exception& e) {
                 std::cerr << "Error: " << e.what() << std::endl;
