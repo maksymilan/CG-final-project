@@ -17,10 +17,10 @@ namespace PartC
     // [新增] 光照参数结构体
     struct LightSettings
     {
-        glm::vec3 direction = glm::vec3(-0.2f, -1.0f, -0.3f);
-        glm::vec3 ambient = glm::vec3(0.2f);
-        glm::vec3 diffuse = glm::vec3(0.5f);
-        glm::vec3 specular = glm::vec3(1.0f);
+        glm::vec3 direction = glm::vec3(-0.5f, -1.0f, -0.5f);
+        glm::vec3 ambient = glm::vec3(0.1f);
+        glm::vec3 diffuse = glm::vec3(3.0f);  // Increased intensity for PBR
+        glm::vec3 specular = glm::vec3(1.0f); // Not used in PBR shader but kept for compatibility
     };
 
     class Renderer

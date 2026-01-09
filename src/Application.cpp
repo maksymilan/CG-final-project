@@ -126,11 +126,13 @@ void Application::InitScene()
 {
     camera = new Camera(glm::vec3(0.0f, 4.0f, 8.0f));
     scene = new SceneContext();
+    scene->mainCamera = camera;
     mainShader = new Shader("assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl");
 
     // 地面
     Mesh *floorMesh = GeometryUtils::CreateCube();
     SceneObject *floorObj = new SceneObject("Ground Plane", floorMesh);
+    floorObj->meshPath = "internal:cube";
     floorObj->scale = glm::vec3(20.0f, 0.01f, 20.0f);
     floorObj->position = glm::vec3(0.0f, -0.01f, 0.0f);
     floorObj->color = glm::vec3(0.25f, 0.25f, 0.25f);
@@ -180,6 +182,7 @@ void Application::InitScene()
     cubeMesh->textures.push_back(specularMap);
 
     SceneObject *cubeObj = new SceneObject("Cube", cubeMesh);
+    cubeObj->meshPath = "internal:cube";
     cubeObj->position = glm::vec3(0.0f, 0.5f, 0.0f);
     cubeObj->color = glm::vec3(1.0f, 1.0f, 1.0f);
     scene->AddObject(cubeObj);
@@ -210,43 +213,56 @@ void Application::DeleteSelectedObject()
 }
 
 // [新增] 更新文件列表
-void Application::UpdateFileList(const std::string& directory) {
+void Application::UpdateFileList(const std::string &directory)
+{
     fileList.clear();
     dirList.clear();
-    
-    try {
+
+    try
+    {
         // 添加上级目录
         dirList.push_back("..");
-        
+
         // 检查目录是否存在
-        if (!fs::exists(directory) || !fs::is_directory(directory)) {
+        if (!fs::exists(directory) || !fs::is_directory(directory))
+        {
             std::cerr << "Error: Directory does not exist or is not a directory: " << directory << std::endl;
             return;
         }
-        
+
         // 遍历目录，跳过权限被拒绝的文件
-        for (const auto& entry : fs::directory_iterator(directory, fs::directory_options::skip_permission_denied)) {
-            try {
-                if (entry.is_directory()) {
+        for (const auto &entry : fs::directory_iterator(directory, fs::directory_options::skip_permission_denied))
+        {
+            try
+            {
+                if (entry.is_directory())
+                {
                     dirList.push_back(entry.path().filename().string());
-                } else if (entry.is_regular_file()) {
+                }
+                else if (entry.is_regular_file())
+                {
                     std::string filename = entry.path().filename().string();
-                    if (fileFilter.empty() || filename.find(fileFilter) != std::string::npos) {
+                    if (fileFilter.empty() || filename.find(fileFilter) != std::string::npos)
+                    {
                         fileList.push_back(filename);
                     }
                 }
-            } catch (const std::exception& e) {
+            }
+            catch (const std::exception &e)
+            {
                 // 忽略单个文件/目录的访问错误
                 continue;
             }
         }
-        
+
         // 排序目录和文件
         std::sort(dirList.begin(), dirList.end());
         std::sort(fileList.begin(), fileList.end());
-        
+
         currentDirectory = directory;
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         std::cerr << "Error: Failed to read directory: " << directory << ". Reason: " << e.what() << std::endl;
         // 使用当前目录作为回退
         currentDirectory = "./";
@@ -561,39 +577,52 @@ void Application::RenderFileDialog() {
     if (!isFileDialogOpen && !isSaveDialogOpen) return;
     
     // 确保selectedFilePath不为空
-    if (!selectedFilePath) {
-        if (isSaveDialogOpen) {
+    if (!selectedFilePath)
+    {
+        if (isSaveDialogOpen)
+        {
             isSaveDialogOpen = false;
-        } else {
+        }
+        else
+        {
             isFileDialogOpen = false;
         }
         return;
     }
-    
+
     ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_FirstUseEver);
     ImGui::Begin(dialogTitle.c_str(), isSaveDialogOpen ? &isSaveDialogOpen : &isFileDialogOpen, ImGuiWindowFlags_NoCollapse);
-    
+
     // 目录导航栏
     ImGui::Text("Current Directory: %s", currentDirectory.c_str());
     ImGui::Separator();
-    
+
     // 目录列表
-    if (ImGui::BeginListBox("##Directories", ImVec2(0, 150))) {
-        for (size_t i = 0; i < dirList.size(); i++) {
-            const auto& dir = dirList[i];
+    if (ImGui::BeginListBox("##Directories", ImVec2(0, 150)))
+    {
+        for (size_t i = 0; i < dirList.size(); i++)
+        {
+            const auto &dir = dirList[i];
             ImGui::PushID(static_cast<int>(i)); // 添加唯一ID
-            if (ImGui::Selectable(dir.c_str())) {
-                try {
-                    if (dir == "..") {
+            if (ImGui::Selectable(dir.c_str()))
+            {
+                try
+                {
+                    if (dir == "..")
+                    {
                         // 前往上级目录
                         fs::path parentPath = fs::path(currentDirectory).parent_path();
                         UpdateFileList(parentPath.string());
-                    } else {
+                    }
+                    else
+                    {
                         // 进入子目录
                         fs::path newPath = fs::path(currentDirectory) / dir;
                         UpdateFileList(newPath.string());
                     }
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception &e)
+                {
                     std::cerr << "Error: " << e.what() << std::endl;
                 }
             }
@@ -601,30 +630,49 @@ void Application::RenderFileDialog() {
         }
         ImGui::EndListBox();
     }
-    
+
     // 文件列表
-    if (!isDirSelection) {
+    if (!isDirSelection)
+    {
         ImGui::Separator();
         ImGui::Text("Files:");
-        if (ImGui::BeginListBox("##Files", ImVec2(0, 200))) {
-            for (size_t i = 0; i < fileList.size(); i++) {
-                const auto& file = fileList[i];
+        if (ImGui::BeginListBox("##Files", ImVec2(0, 200)))
+        {
+            for (size_t i = 0; i < fileList.size(); i++)
+            {
+                const auto &file = fileList[i];
                 ImGui::PushID(static_cast<int>(i)); // 添加唯一ID
-                if (ImGui::Selectable(file.c_str())) {
-                    try {
+                if (ImGui::Selectable(file.c_str()))
+                {
+                    try
+                    {
                         // 选择文件
                         fs::path fullPath = fs::path(currentDirectory) / file;
                         std::string fullPathStr = fullPath.string();
-                        
+
                         // 安全地复制字符串，避免缓冲区溢出
-                        snprintf(selectedFilePath, 256, "%s", fullPathStr.c_str());
-                        
-                        if (isSaveDialogOpen) {
+                        if (fullPathStr.length() < 256)
+                        {
+                            strcpy(selectedFilePath, fullPathStr.c_str());
+                        }
+                        else
+                        {
+                            // 如果路径太长，只复制前255个字符
+                            strncpy(selectedFilePath, fullPathStr.c_str(), 255);
+                            selectedFilePath[255] = '\0';
+                        }
+
+                        if (isSaveDialogOpen)
+                        {
                             isSaveDialogOpen = false;
-                        } else {
+                        }
+                        else
+                        {
                             isFileDialogOpen = false;
                         }
-                    } catch (const std::exception& e) {
+                    }
+                    catch (const std::exception &e)
+                    {
                         std::cerr << "Error: " << e.what() << std::endl;
                     }
                 }
@@ -633,31 +681,47 @@ void Application::RenderFileDialog() {
             ImGui::EndListBox();
         }
     }
-    
+
     // 保存对话框的文件名输入
-    if (isSaveDialogOpen) {
+    if (isSaveDialogOpen)
+    {
         ImGui::Separator();
         static char saveFileName[256] = "";
         ImGui::Text("File Name:");
         ImGui::InputText("##SaveFileName", saveFileName, sizeof(saveFileName));
-        
-        if (ImGui::Button("Save##save", ImVec2(100, 0))) {
-            if (strlen(saveFileName) > 0) {
-                try {
+
+        if (ImGui::Button("Save", ImVec2(100, 0)))
+        {
+            if (strlen(saveFileName) > 0)
+            {
+                try
+                {
                     std::string fileName(saveFileName);
-                    
+
                     // 自动添加.obj扩展名（如果没有的话）
-                    if (!fileFilter.empty() && fileName.find(fileFilter) == std::string::npos) {
+                    if (!fileFilter.empty() && fileName.find(fileFilter) == std::string::npos)
+                    {
                         fileName += fileFilter;
                     }
-                    
+
                     fs::path fullPath = fs::path(currentDirectory) / fileName;
                     std::string fullPathStr = fullPath.string();
-                    
+
                     // 安全地复制字符串，避免缓冲区溢出
-                    snprintf(selectedFilePath, 256, "%s", fullPathStr.c_str());
+                    if (fullPathStr.length() < 256)
+                    {
+                        strcpy(selectedFilePath, fullPathStr.c_str());
+                    }
+                    else
+                    {
+                        // 如果路径太长，只复制前255个字符
+                        strncpy(selectedFilePath, fullPathStr.c_str(), 255);
+                        selectedFilePath[255] = '\0';
+                    }
                     isSaveDialogOpen = false;
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception &e)
+                {
                     std::cerr << "Error: " << e.what() << std::endl;
                 }
             }
@@ -682,38 +746,84 @@ void Application::RenderFileDialog() {
     if (ImGui::Button("Cancel##cancel", ImVec2(100, 0))) {
         if (isSaveDialogOpen) {
             isSaveDialogOpen = false;
-        } else {
+        }
+        else
+        {
             isFileDialogOpen = false;
         }
     }
-    
+
     ImGui::End();
 }
 
+void Application::StartRuntime()
+{
+    if (isRuntime)
+        return;
+
+    // Backup current scene
+    editorSceneBackup = scene;
+
+    // Create a clone for runtime
+    scene = editorSceneBackup->Clone();
+    scene->mainCamera = this->camera;
+
+    // Update selection pointer (try to find the same object in new scene, or just clear it)
+    // For simplicity, clear selection
+    scene->selectedObject = nullptr;
+
+    isRuntime = true;
+    std::cout << "Runtime Started" << std::endl;
+}
+
+void Application::StopRuntime()
+{
+    if (!isRuntime)
+        return;
+
+    // Delete runtime scene
+    delete scene;
+
+    // Restore editor scene
+    scene = editorSceneBackup;
+    editorSceneBackup = nullptr;
+
+    isRuntime = false;
+    std::cout << "Runtime Stopped" << std::endl;
+}
+
 // [新增] 打开文件选择器
-void Application::OpenFileDialog(char* buffer, const std::string& title, const std::string& filter, bool isSave, bool isDir) {
+void Application::OpenFileDialog(char *buffer, const std::string &title, const std::string &filter, bool isSave, bool isDir)
+{
     // 确保buffer不为空
-    if (!buffer) {
+    if (!buffer)
+    {
         std::cerr << "Error: Buffer is null" << std::endl;
         return;
     }
-    
+
     selectedFilePath = buffer;
     dialogTitle = title;
     fileFilter = filter;
     isDirSelection = isDir;
-    
-    try {
+
+    try
+    {
         // 获取当前路径
         std::string currentPath = fs::current_path().string();
         UpdateFileList(currentPath);
-        
-        if (isSave) {
+
+        if (isSave)
+        {
             isSaveDialogOpen = true;
-        } else {
+        }
+        else
+        {
             isFileDialogOpen = true;
         }
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         std::cerr << "Error: Failed to open file dialog: " << e.what() << std::endl;
         // 重置状态
         selectedFilePath = nullptr;
@@ -737,6 +847,12 @@ void Application::Run()
         lastFrame = currentFrame;
 
         ProcessInput();
+
+        // [Fix] Update Scene Components (Scripts, Physics, etc.)
+        if (isRuntime && scene)
+        {
+            scene->Update(deltaTime);
+        }
 
         // 更新动画
         for (auto obj : scene->objects) {
@@ -793,7 +909,8 @@ void Application::ProcessInput()
     if (ImGui::GetIO().WantCaptureKeyboard)
         return;
 
-    if (camera)
+    // 如果处于运行模式，禁止编辑器摄像机控制
+    if (!isRuntime && camera)
     {
         float speed = deltaTime;
         if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
@@ -891,8 +1008,8 @@ void Application::SelectObjectFromMouse(double xpos, double ypos)
     float x = (2.0f * xpos) / width - 1.0f;
     float y = 1.0f - (2.0f * ypos) / height;
     glm::vec4 rayClip = glm::vec4(x, y, -1.0f, 1.0f);
-        glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), aspectRatio, 0.1f, 100.0f);
-        glm::vec4 rayEye = glm::inverse(projection) * rayClip;
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), aspectRatio, 0.1f, 100.0f);
+    glm::vec4 rayEye = glm::inverse(projection) * rayClip;
     rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
     glm::vec3 rayDirWorld = glm::normalize(glm::vec3(glm::inverse(camera->GetViewMatrix()) * rayEye));
     glm::vec3 rayOriginWorld = camera->Position;
@@ -947,11 +1064,11 @@ void Application::ProcessDrag(double xpos, double ypos)
     glm::vec4 rayClip = glm::vec4(x, y, -1.0f, 1.0f);
     // 确保宽高比有效，避免GLM断言错误
     float aspectRatio = (height > 0) ? (float)width / (float)height : 1.0f;
-        glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), aspectRatio, 0.1f, 100.0f);
-        glm::vec4 rayEye = glm::inverse(projection) * rayClip;
-        rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
-        glm::vec3 rayDirWorld = glm::normalize(glm::vec3(glm::inverse(camera->GetViewMatrix()) * rayEye));
-        glm::vec3 rayOriginWorld = camera->Position;
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), aspectRatio, 0.1f, 100.0f);
+    glm::vec4 rayEye = glm::inverse(projection) * rayClip;
+    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+    glm::vec3 rayDirWorld = glm::normalize(glm::vec3(glm::inverse(camera->GetViewMatrix()) * rayEye));
+    glm::vec3 rayOriginWorld = camera->Position;
 
     // 构造一个通过物体当前Y坐标的水平面
     glm::vec3 planeNormal(0.0f, 1.0f, 0.0f);
@@ -1021,7 +1138,9 @@ void Application::RenderScene()
         model = glm::scale(model, obj->scale);
 
         // [Part C] Use Renderer to render mesh
-        mainShader->setVec3("objectColor", obj->color);
+        mainShader->setVec3("albedo", obj->color);
+        mainShader->setFloat("roughness", obj->roughness);
+        mainShader->setFloat("metallic", obj->metallic);
         PartC::Renderer::RenderMesh(obj->mesh, *mainShader, model);
 
         if (obj == scene->selectedObject)
@@ -1042,6 +1161,12 @@ void Application::RenderScene()
             glLineWidth(1.0f);
         }
     }
+
+    // Draw Gizmos (Editor Debug)
+    if (scene && !isRuntime)
+    {
+        scene->DrawGizmos(*mainShader);
+    }
 }
 
 void Application::RenderUI()
@@ -1055,30 +1180,75 @@ void Application::RenderUI()
     ImGui::SetNextWindowSize(ImVec2(300, 650), ImGuiCond_FirstUseEver); // 加高一点
     ImGui::Begin("Scene Editor");
 
+    // [新增] 场景保存/加载
+    ImGui::Text("Scene Management");
+    static char sceneFilePath[256] = "myscene.scn";
+    ImGui::InputText("##sceneFile", sceneFilePath, sizeof(sceneFilePath));
+    ImGui::SameLine();
+    if (ImGui::Button("Browse##scene", ImVec2(60, 0)))
+    {
+        OpenFileDialog(sceneFilePath, "Select Scene File", ".scn", true, false);
+    }
+
+    if (ImGui::Button("Save Scene", ImVec2(135, 0)))
+    {
+        scene->SaveScene(sceneFilePath);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Load Scene", ImVec2(135, 0)))
+    {
+        scene->LoadScene(sceneFilePath);
+    }
+    ImGui::Separator();
+
+    // [新增] 播放控制
+    if (isRuntime)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+        if (ImGui::Button("STOP", ImVec2(-1, 30)))
+        {
+            StopRuntime();
+        }
+        ImGui::PopStyleColor();
+    }
+    else
+    {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
+        if (ImGui::Button("PLAY", ImVec2(-1, 30)))
+        {
+            StartRuntime();
+        }
+        ImGui::PopStyleColor();
+    }
+    ImGui::Dummy(ImVec2(0, 10));
+
+    // [新增] 全局光照控制
+    if (ImGui::CollapsingHeader("Global Lighting", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::DragFloat3("Light Dir", (float *)&PartC::Renderer::mainLight.direction, 0.05f, -1.0f, 1.0f);
+        ImGui::DragFloat3("Light Color", (float *)&PartC::Renderer::mainLight.diffuse, 0.1f, 0.0f, 20.0f);
+        ImGui::ColorEdit3("Ambient", (float *)&PartC::Renderer::mainLight.ambient);
+    }
+    ImGui::Dummy(ImVec2(0, 10));
+
     ImGui::Text("SCENE HIERARCHY");
     ImGui::Separator();
 
     ImGui::BeginChild("HierarchyList", ImVec2(0, 150), true);
-    for (size_t i = 0; i < scene->objects.size(); i++) {
+    for (size_t i = 0; i < scene->objects.size(); i++)
+    {
         auto obj = scene->objects[i];
         bool isSelected = (scene->selectedObject == obj);
         ImGui::PushID(static_cast<int>(i));
-        if (ImGui::Selectable(obj->name.c_str(), isSelected)) {
+        if (ImGui::Selectable(obj->name.c_str(), isSelected))
+        {
             scene->selectedObject = obj;
         }
-        if (isSelected) ImGui::SetItemDefaultFocus();
+        if (isSelected)
+            ImGui::SetItemDefaultFocus();
         ImGui::PopID();
     }
     ImGui::EndChild();
-
-    ImGui::Dummy(ImVec2(0, 5));
-    ImGui::Text("GLOBAL LIGHTING");
-    ImGui::Separator();
-
-    ImGui::DragFloat3("Light Dir", (float *)&PartC::Renderer::mainLight.direction, 0.05f, -1.0f, 1.0f);
-    ImGui::ColorEdit3("Ambient", (float *)&PartC::Renderer::mainLight.ambient);
-    ImGui::ColorEdit3("Diffuse", (float *)&PartC::Renderer::mainLight.diffuse);
-    ImGui::ColorEdit3("Specular", (float *)&PartC::Renderer::mainLight.specular);
 
     ImGui::Dummy(ImVec2(0, 5));
     ImGui::Text("CREATE & IMPORT");
@@ -1120,11 +1290,12 @@ void Application::RenderUI()
         newObj->segments = 16;
         scene->AddObject(newObj);
     }
-    
-    // 第二行按钮
-    if (ImGui::Button("Cone", ImVec2(btnWidth, btnHeight))) {
-        Mesh* mesh = GeometryGenerator::CreateCone(0.5f, 1.0f, 20);
-        SceneObject* newObj = new SceneObject("New Cone", mesh);
+
+    ImGui::Dummy(ImVec2(0, 5));
+    if (ImGui::Button("Cone", ImVec2(60, 0)))
+    {
+        Mesh *mesh = GeometryGenerator::CreateCone(0.5f, 1.0f, 20);
+        SceneObject *newObj = new SceneObject("New Cone", mesh);
         newObj->position = glm::vec3(0, 0.5f, 0);
         newObj->geometryType = GeometryType::Cone;
         newObj->param1 = 0.5f;
@@ -1133,9 +1304,10 @@ void Application::RenderUI()
         scene->AddObject(newObj);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Plane", ImVec2(btnWidth, btnHeight))) {
-        Mesh* mesh = GeometryGenerator::CreatePlane(2.0f, 2.0f);
-        SceneObject* newObj = new SceneObject("New Plane", mesh);
+    if (ImGui::Button("Plane", ImVec2(60, 0)))
+    {
+        Mesh *mesh = GeometryGenerator::CreatePlane(2.0f, 2.0f);
+        SceneObject *newObj = new SceneObject("New Plane", mesh);
         newObj->position = glm::vec3(0, 0.0f, 0);
         newObj->geometryType = GeometryType::Plane;
         newObj->param1 = 2.0f;
@@ -1188,15 +1360,19 @@ void Application::RenderUI()
     ImGui::Text("Import Model (.obj)");
     ImGui::InputText("##objPath", objPathBuffer, sizeof(objPathBuffer));
     ImGui::SameLine();
-    if (ImGui::Button("Browse##obj", ImVec2(60, 0))) {
+    if (ImGui::Button("Browse##obj", ImVec2(60, 0)))
+    {
         OpenFileDialog(objPathBuffer, "Open OBJ File", ".obj", false, false);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Load##obj", ImVec2(60, 0))) {
+    if (ImGui::Button("Load##obj", ImVec2(60, 0)))
+    {
         // 调用新的 OBJLoader 接口
-        Mesh* imported = OBJLoader::Load(objPathBuffer); 
-        if (imported) {
-            SceneObject* newObj = new SceneObject("Imported Model", imported);
+        Mesh *imported = OBJLoader::Load(objPathBuffer);
+        if (imported)
+        {
+            SceneObject *newObj = new SceneObject("Imported Model", imported);
+            newObj->meshPath = objPathBuffer;
             scene->AddObject(newObj);
         }
         else
@@ -1204,7 +1380,7 @@ void Application::RenderUI()
             std::cout << "Failed to load model from " << objPathBuffer << std::endl;
         }
     }
-    
+
     // [新增] 加载动画序列 UI
     ImGui::Dummy(ImVec2(0, 10));
     ImGui::Text("Import Animation Sequence");
@@ -1216,7 +1392,8 @@ void Application::RenderUI()
     // 路径输入和按钮
     ImGui::InputText("##animPath", animPathBuffer, sizeof(animPathBuffer));
     ImGui::SameLine();
-    if (ImGui::Button("Browse##anim", ImVec2(60, 0))) {
+    if (ImGui::Button("Browse##anim", ImVec2(60, 0)))
+    {
         OpenFileDialog(animPathBuffer, "Select Animation Directory", ".obj", false, true);
     }
     ImGui::SameLine();
@@ -1225,7 +1402,7 @@ void Application::RenderUI()
             // 检查路径是否存在
             if (!std::filesystem::exists(animPathBuffer)) {
                 std::cerr << "Error: Animation directory does not exist: " << animPathBuffer << std::endl;
-                return;
+                throw std::runtime_error("Directory does not exist");
             }
             
             // 调用新的 LoadSequence 接口
@@ -1263,41 +1440,52 @@ void Application::RenderUI()
     ImGui::Dummy(ImVec2(0, 10));
     ImGui::Text("EXPORT");
     ImGui::Separator();
-    
+
     // 导出单个选中物体
-    if (scene->selectedObject) {
+    if (scene->selectedObject)
+    {
         ImGui::Text("Export Selected Mesh");
         static char exportMeshPath[256] = "exports/selected_mesh.obj";
         ImGui::InputText("##exportMeshPath", exportMeshPath, sizeof(exportMeshPath));
         ImGui::SameLine();
-        if (ImGui::Button("Browse##exportMesh", ImVec2(60, 0))) {
+        if (ImGui::Button("Browse##exportMesh", ImVec2(60, 0)))
+        {
             OpenFileDialog(exportMeshPath, "Save Mesh As", ".obj", true, false);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Export Mesh##mesh", ImVec2(100, 0))) {
+        if (ImGui::Button("Export Mesh##mesh", ImVec2(100, 0)))
+        {
             bool success = OBJLoader::ExportMesh(scene->selectedObject->mesh, exportMeshPath);
-            if (success) {
+            if (success)
+            {
                 std::cout << "Successfully exported mesh to: " << exportMeshPath << std::endl;
-            } else {
+            }
+            else
+            {
                 std::cout << "Failed to export mesh to: " << exportMeshPath << std::endl;
             }
         }
     }
-    
+
     // 导出整个场景
     ImGui::Text("Export Entire Scene");
     static char exportScenePath[256] = "exports/scene.obj";
     ImGui::InputText("##exportScenePath", exportScenePath, sizeof(exportScenePath));
     ImGui::SameLine();
-    if (ImGui::Button("Browse##exportScene", ImVec2(60, 0))) {
+    if (ImGui::Button("Browse##exportScene", ImVec2(60, 0)))
+    {
         OpenFileDialog(exportScenePath, "Save Scene As", ".obj", true, false);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Export Scene##scene", ImVec2(100, 0))) {
+    if (ImGui::Button("Export Scene##scene", ImVec2(100, 0)))
+    {
         bool success = OBJLoader::ExportScene(scene, exportScenePath);
-        if (success) {
+        if (success)
+        {
             std::cout << "Successfully exported scene to: " << exportScenePath << std::endl;
-        } else {
+        }
+        else
+        {
             std::cout << "Failed to export scene to: " << exportScenePath << std::endl;
         }
     }
@@ -1347,22 +1535,21 @@ void Application::RenderUI()
 
         ImGui::Dummy(ImVec2(0, 5));
         ImGui::Text("Material & Texture");
-        ImGui::ColorEdit3("Color", (float *)&scene->selectedObject->color);
+        ImGui::ColorEdit3("Albedo", (float *)&scene->selectedObject->color);
 
-        // [新增] 材质 Shininess 控制
-        // 注意：目前 Shininess 是在 Shader 中统一设置的，为了支持单个物体，我们需要修改 Shader 和 Renderer
-        // 这里暂时演示全局 Shininess 或者预留接口
-        static float shininess = 32.0f;
-        if (ImGui::DragFloat("Shininess", &shininess, 1.0f, 2.0f, 256.0f))
-        {
-            // TODO: 将此值传递给 Shader (目前 Renderer::SetupLights 中是硬编码的)
-            // 我们可以临时通过 uniform 传递，或者将其作为 SceneObject 的属性
-        }
+        // PBR Controls
+        ImGui::SliderFloat("Roughness", &scene->selectedObject->roughness, 0.0f, 1.0f);
+        ImGui::SliderFloat("Metallic", &scene->selectedObject->metallic, 0.0f, 1.0f);
 
         // [新增] 纹理 UI
         ImGui::Text("Texture Path (Absolute)");
         static char texBuf[256] = "";
         ImGui::InputText("##texPath", texBuf, sizeof(texBuf));
+        ImGui::SameLine();
+        if (ImGui::Button("Browse##tex", ImVec2(60, 0)))
+        {
+            OpenFileDialog(texBuf, "Open Texture File", "", false, false);
+        }
         ImGui::SameLine();
         if (ImGui::Button("Apply Tex"))
         {
@@ -1480,6 +1667,51 @@ void Application::RenderUI()
         }
 
         ImGui::Dummy(ImVec2(0, 15));
+        ImGui::Separator();
+        ImGui::Text("Components");
+
+        // 显示现有组件
+        for (size_t i = 0; i < scene->selectedObject->components.size(); i++)
+        {
+            Component *comp = scene->selectedObject->components[i];
+            ImGui::PushID(comp);
+            if (ImGui::CollapsingHeader(comp->GetName().c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                comp->OnInspectorGUI();
+                if (ImGui::Button("Remove Component"))
+                {
+                    scene->selectedObject->RemoveComponent(comp);
+                    i--; // 调整索引
+                }
+            }
+            ImGui::PopID();
+        }
+
+        // 添加组件按钮
+        if (ImGui::Button("Add Component"))
+        {
+            ImGui::OpenPopup("AddComponentPopup");
+        }
+
+        if (ImGui::BeginPopup("AddComponentPopup"))
+        {
+            const auto &creators = ComponentRegistry::Instance().GetCreators();
+            if (creators.empty())
+            {
+                ImGui::TextDisabled("No components found");
+            }
+            for (const auto &pair : creators)
+            {
+                if (ImGui::Selectable(pair.first.c_str()))
+                {
+                    Component *newComp = pair.second();
+                    scene->selectedObject->AddComponent(newComp);
+                }
+            }
+            ImGui::EndPopup();
+        }
+
+        ImGui::Dummy(ImVec2(0, 15));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button("DELETE OBJECT", ImVec2(-1, 30)))
@@ -1495,7 +1727,7 @@ void Application::RenderUI()
     }
 
     ImGui::End();
-    
+
     // [新增] 渲染文件选择器
     RenderFileDialog();
     

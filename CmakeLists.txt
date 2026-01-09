@@ -64,21 +64,11 @@ FetchContent_MakeAvailable(stb)
 include_directories(${stb_SOURCE_DIR})
 
 # --- 5. 定义项目文件 ---
-set(PROJECT_SOURCES
-    src/main.cpp
-    src/glad.c
-    src/Application.cpp    # <--- 新增
-    src/SceneContext.cpp
-    src/Shader.cpp
-    src/Mesh.cpp
-    src/Texture.cpp
-    src/Renderer.cpp
-    src/ModelLoader.cpp
-    src/GeometryUtils.cpp
-    src/GeometryGenerator.cpp
-    src/OBJLoader.cpp
-    ${IMGUI_SOURCES}
+file(GLOB_RECURSE PROJECT_SOURCES 
+    "src/*.cpp" 
+    "src/*.c"
 )
+list(APPEND PROJECT_SOURCES ${IMGUI_SOURCES})
 
 add_executable(App ${PROJECT_SOURCES})
 

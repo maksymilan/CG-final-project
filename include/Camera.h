@@ -8,7 +8,8 @@
 #include <vector>
 
 // 定义摄像机移动方向
-enum Camera_Movement {
+enum Camera_Movement
+{
     FORWARD,
     BACKWARD,
     LEFT,
@@ -18,13 +19,14 @@ enum Camera_Movement {
 };
 
 // 默认摄像机参数
-const float YAW         = -90.0f;
-const float PITCH       =  0.0f;
-const float SPEED       =  2.5f;
-const float SENSITIVITY =  0.1f;
-const float ZOOM        =  45.0f;
+const float YAW = -90.0f;
+const float PITCH = 0.0f;
+const float SPEED = 2.5f;
+const float SENSITIVITY = 0.1f;
+const float ZOOM = 45.0f;
 
-class Camera {
+class Camera
+{
 public:
     // 摄像机属性
     glm::vec3 Position;
@@ -41,7 +43,8 @@ public:
     float Zoom;
 
     // 构造函数
-    Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f), float yaw = YAW, float pitch = PITCH) : Front(glm::vec3(0.0f, 0.0f, -1.0f)), MovementSpeed(SPEED), MouseSensitivity(SENSITIVITY), Zoom(ZOOM) {
+    Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f), float yaw = YAW, float pitch = PITCH) : Front(glm::vec3(0.0f, 0.0f, -1.0f)), MovementSpeed(SPEED), MouseSensitivity(SENSITIVITY), Zoom(ZOOM)
+    {
         Position = position;
         WorldUp = up;
         Yaw = yaw;
@@ -50,12 +53,14 @@ public:
     }
 
     // 返回观察矩阵
-    glm::mat4 GetViewMatrix() {
+    glm::mat4 GetViewMatrix()
+    {
         return glm::lookAt(Position, Position + Front, Up);
     }
 
     // 处理键盘输入
-    void ProcessKeyboard(Camera_Movement direction, float deltaTime) {
+    void ProcessKeyboard(Camera_Movement direction, float deltaTime)
+    {
         float velocity = MovementSpeed * deltaTime;
         if (direction == FORWARD)
             Position += Front * velocity;
@@ -72,15 +77,17 @@ public:
     }
 
     // 处理鼠标移动
-    void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true) {
+    void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true)
+    {
         xoffset *= MouseSensitivity;
         yoffset *= MouseSensitivity;
 
-        Yaw   += xoffset;
+        Yaw += xoffset;
         Pitch += yoffset;
 
         // 限制俯仰角，防止屏幕翻转
-        if (constrainPitch) {
+        if (constrainPitch)
+        {
             if (Pitch > 89.0f)
                 Pitch = 89.0f;
             if (Pitch < -89.0f)
@@ -90,7 +97,8 @@ public:
     }
 
     // 处理鼠标滚轮缩放
-    void ProcessMouseScroll(float yoffset) {
+    void ProcessMouseScroll(float yoffset)
+    {
         Zoom -= (float)yoffset;
         if (Zoom < 1.0f)
             Zoom = 1.0f;
@@ -98,8 +106,18 @@ public:
             Zoom = 45.0f;
     }
 
+    // [New] LookAt target
+    void LookAt(glm::vec3 target)
+    {
+        glm::vec3 direction = glm::normalize(target - Position);
+        Pitch = glm::degrees(asin(direction.y));
+        Yaw = glm::degrees(atan2(direction.z, direction.x));
+        updateCameraVectors();
+    }
+
 private:
-    void updateCameraVectors() {
+    void updateCameraVectors()
+    {
         // 计算新的 Front 向量
         glm::vec3 front;
         front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
@@ -107,8 +125,8 @@ private:
         front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
         Front = glm::normalize(front);
         // 重新计算 Right 和 Up 向量
-        Right = glm::normalize(glm::cross(Front, WorldUp));  
-        Up    = glm::normalize(glm::cross(Right, Front));
+        Right = glm::normalize(glm::cross(Front, WorldUp));
+        Up = glm::normalize(glm::cross(Right, Front));
     }
 };
 #endif

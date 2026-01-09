@@ -16,6 +16,8 @@ bin/
 *.user
 *.suo
 .DS_Store       
+imgui.ini
 
 # 3. 忽略 FetchContent 下载的临时文件
 _deps/
+assets/

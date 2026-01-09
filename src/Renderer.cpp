@@ -91,7 +91,7 @@ namespace PartC
         shader.setVec3("dirLight.specular", mainLight.specular);
 
         // Material defaults
-        shader.setFloat("material.shininess", 32.0f);
+        // shader.setFloat("material.shininess", 32.0f); // Removed for PBR
 
         // Shadow Map
         shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
